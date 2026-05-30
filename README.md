@@ -1,6 +1,6 @@
 # matrix-events
 
-**Delete the backend.** Rooms are tables. Events are rows. The fold is the query. There is no database to leave open, no API to expose, and no keys to leak — because those layers are not here.
+**Delete the backend.** Rooms are bases. Events are rows. The fold is the query. There is no database to leave open, no API to expose, and no keys to leak — because those layers are not here.
 
 Most "AI built it in a weekend" breaches share one root cause, and it is never the app logic — the model writes app logic fine. It is the layer underneath: the auth tier, the database tier, the API tier. The exact part of the stack where one wrong default is fatal, and the exact part a model configures worst. A Row-Level-Security toggle left off. A key shipped in the client bundle. An endpoint that returns every user's record if you just ask.
 
