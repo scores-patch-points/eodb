@@ -49,6 +49,11 @@ import { parseEventType, OP } from './operators.js';
 export function initial() {
   return {
     entities: {},
+    // type → array of anchors. Maintained by dispatch on INS/SYN so a
+    // table view reads only its own rows instead of scanning every entity.
+    // Plain object (arrays, not Sets) so it round-trips through the
+    // vault-encrypted JSON checkpoints unchanged.
+    entitiesByType: {},
     partitions: {},
     connections: [],
     frames: [],
@@ -57,6 +62,28 @@ export function initial() {
     _undecryptable: 0,
     _violations: [],
   };
+}
+
+/**
+ * Rebuild the entitiesByType index from a flat entities map. O(n), used
+ * only when seeding from a checkpoint written before the index existed —
+ * the steady-state path maintains the index incrementally in dispatch.
+ */
+export function rebuildTypeIndex(entities) {
+  const idx = {};
+  for (const [anchor, e] of Object.entries(entities || {})) {
+    const t = e && e._type;
+    if (!t) continue;
+    (idx[t] ??= []).push(anchor);
+  }
+  return idx;
+}
+
+/** Guarantee a state carries an up-to-date entitiesByType index. */
+export function ensureTypeIndex(state) {
+  if (!state || typeof state !== 'object') return state;
+  if (!state.entitiesByType) state.entitiesByType = rebuildTypeIndex(state.entities);
+  return state;
 }
 
 // ── Helpers ──
@@ -122,15 +149,29 @@ function dispatch(state, event) {
 
   if (!content || Object.keys(content).length === 0) return state;
 
+  // Defensive: states folded from a pre-index checkpoint get the index
+  // rebuilt here, once, before any INS/SYN needs it.
+  if (!state.entitiesByType) state.entitiesByType = rebuildTypeIndex(state.entities);
+
   const op = parseEventType(type);
   if (!op) return state;
 
-  state.cursor = ts;
+  // Cursor is a high-water mark: the timestamp of the newest event folded so
+  // far, not the last one dispatched. Events can arrive out of order (late
+  // decryption, federation, a checkpoint tail older than its head), and
+  // regressing the cursor would make a checkpoint-seeded fold diverge from a
+  // full fold. `state(t) = fold(events[0..t])` must hold regardless of the
+  // order events reached the fold.
+  if (ts > state.cursor) state.cursor = ts;
 
   switch (op) {
     case OP.INS: {
       const { anchor, entity_type, payload } = content;
       if (!anchor) break;
+      // Anchors are content-addressed, so a replayed INS overwrites the same
+      // entity. Only the FIRST appearance is a new index member — pushing on
+      // replay would list the anchor twice and break the index ≡ scan invariant.
+      const isNew = !Object.prototype.hasOwnProperty.call(state.entities, anchor);
       state.entities[anchor] = {
         ...payload,
         _anchor: anchor,
@@ -140,6 +181,7 @@ function dispatch(state, event) {
         _eventId: eventId,
         _hwm: OP.INS.order,
       };
+      if (isNew) (state.entitiesByType[entity_type] ??= []).push(anchor);
       break;
     }
 
@@ -209,6 +251,7 @@ function dispatch(state, event) {
         }
       }
 
+      const isNew = !Object.prototype.hasOwnProperty.call(state.entities, synAnchor);
       state.entities[synAnchor] = {
         ...output,
         _anchor: synAnchor,
@@ -219,6 +262,7 @@ function dispatch(state, event) {
         _eventId: eventId,
         _hwm: OP.SYN.order,
       };
+      if (isNew) (state.entitiesByType['_synthesis'] ??= []).push(synAnchor);
       break;
     }
 
@@ -342,12 +386,27 @@ export function fold(events) {
  * @returns {FoldState}
  */
 export function foldFrom(state, newEvents) {
-  return chronological(newEvents).reduce(dispatch, state);
+  return chronological(newEvents).reduce(dispatch, ensureTypeIndex(state));
 }
 
 // ── Query helpers ──
 
+/**
+ * Entities of a type. Uses the maintained entitiesByType index when the
+ * state has one (O(rows of type)); falls back to a full scan for states
+ * folded before the index existed.
+ */
 export function entitiesOfType(state, entityType) {
+  if (state.entitiesByType) {
+    const anchors = state.entitiesByType[entityType];
+    if (!anchors) return [];
+    const out = [];
+    for (const a of anchors) {
+      const e = state.entities[a];
+      if (e) out.push(e);
+    }
+    return out;
+  }
   return Object.values(state.entities).filter(e => e._type === entityType);
 }
 

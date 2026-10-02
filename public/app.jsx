@@ -463,6 +463,7 @@ const EMPTY_EVENTS = [];
 function shallowCopyState(s) {
   return {
     entities: { ...s.entities },
+    entitiesByType: { ...(s.entitiesByType || {}) },
     partitions: { ...s.partitions },
     connections: s.connections.slice(),
     frames: s.frames.slice(),
@@ -491,6 +492,11 @@ function pendingAnchors(ev) {
 function foldPendingOnto(ME, cs, pending) {
   if (!pending || pending.length === 0) return cs;
   const state = shallowCopyState(cs);
+  // Rebuild the type index on the copy: the inner arrays are shared with the
+  // committed cache, and pending INS/SYN push anchors into them — folding
+  // pending directly would corrupt the cached index. Pending is small, so an
+  // O(entities) rebuild here is cheaper than the sharing bugs it prevents.
+  state.entitiesByType = ME.rebuildTypeIndex(state.entities);
   const touched = new Set();
   for (const ev of pending) for (const a of pendingAnchors(ev)) touched.add(a);
   for (const a of touched) {
@@ -503,7 +509,7 @@ function foldPendingOnto(ME, cs, pending) {
 // cached prefix is still valid (committed is append-only, checked by the
 // event_id at the cache boundary). Mutates `cache` only when extending the
 // live head; scrub-behind queries fold a fresh prefix and leave it alone.
-function foldCommitted(ME, cache, committed, cc, roomId) {
+function foldCommitted(ME, cache, committed, cc, roomId, checkpoint) {
   const ccLastId = cc > 0 ? committed[cc - 1].event_id : null;
   const cacheUsable =
     cache.state &&
@@ -525,7 +531,26 @@ function foldCommitted(ME, cache, committed, cc, roomId) {
     return ME.fold(committed.slice(0, cc));
   }
 
-  // Cold (room switch / first fold): rebuild and seed the cache at the head.
+  // Cold (room switch / first fold): rebuild and seed the cache. When a
+  // checkpoint exists for the room and its count is not past the fold length,
+  // seed the cache from the checkpoint state and fold only the tail after it —
+  // turning a cold open of a 1M-event room from an O(all events) fold into
+  // O(events since last checkpoint).
+  if (checkpoint && checkpoint.state && checkpoint.count > 0 && checkpoint.count <= cc) {
+    const base = structuredClone(checkpoint.state);
+    if (ME.ensureTypeIndex) ME.ensureTypeIndex(base);
+    cache.roomId = roomId;
+    cache.count = checkpoint.count;
+    cache.lastId = committed[checkpoint.count - 1]?.event_id ?? null;
+    cache.state = base;
+    if (cc > checkpoint.count) {
+      cache.state = committed.slice(checkpoint.count, cc).reduce(ME.dispatch, cache.state);
+      cache.count = cc;
+      cache.lastId = ccLastId;
+    }
+    return cache.state;
+  }
+
   const fresh = ME.fold(committed.slice(0, cc));
   cache.roomId = roomId;
   cache.count = cc;
@@ -629,7 +654,8 @@ function App() {
   const foldSig = `${currentRoomId || ''}|${cc}|${lastCommittedId}|${pendingSig}`;
 
   const state = useMemo(() => {
-    const committedState = foldCommitted(ME, foldCacheRef.current, committed, cc, currentRoomId);
+    const cp = isLive ? (window.MatrixLive?.getCheckpointForRoom?.(currentRoomId) ?? null) : null;
+    const committedState = foldCommitted(ME, foldCacheRef.current, committed, cc, currentRoomId, cp);
     if (pendingPart.length === 0) {
       // No pending: hand back a fresh top-level object (new identity for React)
       // that shares the cached inner state — never mutated downstream.

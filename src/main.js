@@ -610,6 +610,12 @@ async function openRoom(roomId) {
   await store.open();
   roomStores.set(roomId, store);
 
+  // Prime the checkpoint (cached on the store) so the UI can seed its fold
+  // from it instead of folding the whole committed log on a cold open.
+  try { await store.loadCheckpoint(); } catch (e) {
+    console.warn('[bridge] checkpoint load failed:', e);
+  }
+
   const stored = store.getCount();
   let events = [];
   if (stored > 0) {
@@ -630,8 +636,9 @@ async function openRoom(roomId) {
       if (added.length > 0) {
         const plain = added.map(toPlain).filter(isOpEvent);
         const cur = roomEvents.get(roomId) || [];
-        roomEvents.set(roomId, cur.concat(plain));
+        cur.push(...plain); // in-place append — O(1), no O(n) array copy per event
         notify('events');
+        await maybeCheckpoint(roomId);
       }
       // A first-time seed paginates the room's entire history into the SDK
       // timeline (one event per cell edit → potentially hundreds of MB of
@@ -656,8 +663,9 @@ async function openRoom(roomId) {
         if (added.length > 0) {
           const plain = added.map(toPlain).filter(isOpEvent);
           const cur = roomEvents.get(roomId) || [];
-          roomEvents.set(roomId, cur.concat(plain));
+          cur.push(...plain);
           notify('events');
+          await maybeCheckpoint(roomId);
         }
       }));
       fns.push(onDecrypted(roomId, async (event) => {
@@ -666,8 +674,9 @@ async function openRoom(roomId) {
         if (added.length > 0) {
           const plain = added.map(toPlain).filter(isOpEvent);
           const cur = roomEvents.get(roomId) || [];
-          roomEvents.set(roomId, cur.concat(plain));
+          cur.push(...plain);
           notify('events');
+          await maybeCheckpoint(roomId);
         }
       }));
       fns.push(onLocalEchoUpdated(roomId, async (event) => {
@@ -676,10 +685,11 @@ async function openRoom(roomId) {
           if (added.length > 0) {
             const plain = added.map(toPlain).filter(isOpEvent);
             const cur = roomEvents.get(roomId) || [];
-            roomEvents.set(roomId, cur.concat(plain));
+            cur.push(...plain);
           }
           reconcilePendingByTxn(event);
           notify('events');
+          await maybeCheckpoint(roomId);
         }
       }));
       fns.push(onMembersChange(roomId, () => notify('members')));
@@ -718,6 +728,32 @@ function getEventsForRoom(roomId) {
   const pending = getPendingForRoom(roomId);
   if (pending.length === 0) return committed;
   return committed.concat(pending);
+}
+
+/**
+ * Persist a checkpoint of a room's folded state once the store's adaptive
+ * interval is reached. The checkpoint makes the next cold open O(events since
+ * checkpoint) instead of O(all events) — the UI seeds its fold cache from it
+ * (MatrixLive.getCheckpointForRoom → app.jsx foldCommitted).
+ *
+ * The fold used here is the SAME engine the UI renders with (window.
+ * MatrixEngine, arrival order) rather than src/fold.js's chronological fold,
+ * so a checkpoint-seeded state is byte-identical to what the UI would have
+ * produced from the same committed log. Falls back to the canonical fold when
+ * the engine isn't loaded yet.
+ */
+async function maybeCheckpoint(roomId) {
+  const store = roomStores.get(roomId);
+  if (!store || !store.shouldCheckpoint()) return;
+  const events = roomEvents.get(roomId) || [];
+  if (events.length === 0) return;
+  const engineFold = typeof window !== 'undefined' && window.MatrixEngine?.fold;
+  const state = engineFold ? engineFold(events) : fold(events);
+  try {
+    await store.saveCheckpoint(state);
+  } catch (e) {
+    console.warn('[bridge] checkpoint save failed:', e);
+  }
 }
 
 // ── Emit operator ──
@@ -991,6 +1027,7 @@ window.MatrixLive = {
   getEventsForRoom,
   getCommittedForRoom,
   getPendingForRoom,
+  getCheckpointForRoom: (roomId) => roomStores.get(roomId)?.getCheckpoint?.() || null,
   emit,
   inviteUser,
   kickUser,

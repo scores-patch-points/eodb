@@ -592,7 +592,13 @@ function RecordDetailPanel({
 // ─────────────────────────────────────────────────────────────────────────
 
 function buildTable(entityType, state) {
-  const rows = Object.values(state.entities).filter(e => e._type === entityType);
+  // Read only this type's rows via the fold's maintained entitiesByType index
+  // when present (O(rows of type)), falling back to a full scan for states
+  // folded before the index existed (e.g. demo seed from an older cache).
+  const et = window.MatrixEngine?.entitiesOfType;
+  const rows = et
+    ? et(state, entityType)
+    : Object.values(state.entities).filter(e => e._type === entityType);
   // Schema-driven columns. If schema declares fields for this type, use those
   // in order, with their declared SQL-ish type. Fields that show up in data
   // but NOT in schema are appended with an "unschematized" flag so the user

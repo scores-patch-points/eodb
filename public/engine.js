@@ -63,6 +63,9 @@ function makeAnchor(entityType, payload, sender, ts) {
 function initial() {
   return {
     entities: {},
+    // type → array of anchors, maintained on INS/SYN. Plain object of
+    // arrays so it round-trips through JSON (demo store, checkpoints).
+    entitiesByType: {},
     partitions: {},
     connections: [],
     frames: [],
@@ -70,6 +73,22 @@ function initial() {
     cursor: 0,
     _violations: [],
   };
+}
+
+function rebuildTypeIndex(entities) {
+  const idx = {};
+  for (const [anchor, e] of Object.entries(entities || {})) {
+    const t = e && e._type;
+    if (!t) continue;
+    (idx[t] ??= []).push(anchor);
+  }
+  return idx;
+}
+
+function ensureTypeIndex(state) {
+  if (!state || typeof state !== 'object') return state;
+  if (!state.entitiesByType) state.entitiesByType = rebuildTypeIndex(state.entities);
+  return state;
 }
 
 function setPath(obj, path, value) {
@@ -86,7 +105,10 @@ function dispatch(state, event) {
   const op = parseEventType(event.type);
   if (!op) return state;
   const { content, sender, origin_server_ts: ts, event_id: eventId } = event;
-  state.cursor = ts;
+  // High-water mark, not "last dispatched": out-of-order arrival (late keys,
+  // checkpoint tails) must not regress the cursor.
+  if (ts > state.cursor) state.cursor = ts;
+  if (!state.entitiesByType) state.entitiesByType = rebuildTypeIndex(state.entities);
 
   switch (op) {
     case OP.INS: {
@@ -99,6 +121,7 @@ function dispatch(state, event) {
         // Optional: materialize an "import" wrapper at `anchor` so the file
         // upload shows in the log/audit.
         if (anchor) {
+          const impNew = !Object.prototype.hasOwnProperty.call(state.entities, anchor);
           state.entities[anchor] = {
             ...(payload || {}),
             _anchor: anchor,
@@ -111,12 +134,14 @@ function dispatch(state, event) {
             _bulkCount: rows.length,
             _bulkTarget: entity_type,
           };
+          if (impNew) (state.entitiesByType[payload?._type || 'import'] ??= []).push(anchor);
         }
         for (let i = 0; i < rows.length; i++) {
           const r = rows[i];
           const rAnchor = r._anchor || r.anchor || makeAnchor(entity_type, r, sender, ts + i);
           if (!rAnchor) continue;
           const { _anchor: __a, anchor: __ax, ...row } = r;
+          const rowNew = !Object.prototype.hasOwnProperty.call(state.entities, rAnchor);
           state.entities[rAnchor] = {
             ...row,
             _anchor: rAnchor,
@@ -128,10 +153,12 @@ function dispatch(state, event) {
             _writes: {},
             _importedFrom: anchor || null,
           };
+          if (rowNew) (state.entitiesByType[entity_type] ??= []).push(rAnchor);
         }
         break;
       }
       if (!anchor) break;
+      const isNew = !Object.prototype.hasOwnProperty.call(state.entities, anchor);
       state.entities[anchor] = {
         ...payload,
         _anchor: anchor,
@@ -142,6 +169,7 @@ function dispatch(state, event) {
         _hwm: OP.INS.order,
         _writes: {},
       };
+      if (isNew) (state.entitiesByType[entity_type] ??= []).push(anchor);
       break;
     }
     case OP.SEG: {
@@ -189,6 +217,7 @@ function dispatch(state, event) {
           }
         }
       }
+      const synNew = !Object.prototype.hasOwnProperty.call(state.entities, synAnchor);
       state.entities[synAnchor] = {
         ...output,
         _anchor: synAnchor,
@@ -199,6 +228,7 @@ function dispatch(state, event) {
         _eventId: eventId,
         _hwm: OP.SYN.order,
       };
+      if (synNew) (state.entitiesByType['_synthesis'] ??= []).push(synAnchor);
       break;
     }
     case OP.DEF: {
@@ -255,6 +285,20 @@ function dispatch(state, event) {
 
 function fold(events) {
   return events.reduce(dispatch, initial());
+}
+
+function entitiesOfType(state, entityType) {
+  if (state.entitiesByType) {
+    const anchors = state.entitiesByType[entityType];
+    if (!anchors) return [];
+    const out = [];
+    for (const a of anchors) {
+      const e = state.entities[a];
+      if (e) out.push(e);
+    }
+    return out;
+  }
+  return Object.values(state.entities).filter(e => e._type === entityType);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -386,5 +430,6 @@ window.MatrixEngine = {
   setNamespace, eventType, parseEventType,
   cyrb53, makeAnchor,
   initial, fold, dispatch,
+  rebuildTypeIndex, ensureTypeIndex, entitiesOfType,
   seedData,
 };

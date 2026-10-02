@@ -33,12 +33,18 @@ import { vault } from './vault.js';
 const MAGIC = new Uint8Array([0x4D, 0x58, 0x45, 0x56]);
 const VERSION = 2;
 const LEGACY_VERSION = 1;
-const CHECKPOINT_INTERVAL = 200;
 const IV_BYTES = 12;
 const CHUNK_HEADER_BYTES = IV_BYTES + 4;
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+
+function concatBytes(a, b) {
+  const out = new Uint8Array(a.length + b.length);
+  out.set(a, 0);
+  out.set(b, a.length);
+  return out;
+}
 
 let opfsAvailable = null;
 async function checkOPFS() {
@@ -150,6 +156,14 @@ export class EventStore {
     this._appendsSinceCheckpoint = 0;
     this._appendQueue = Promise.resolve();
     this._encrypted = false;
+    // Session cache of the fully-decrypted event body. _scanFromOPFS loads
+    // it once; getAll/getEventsSince serve from it, so cold open decrypts
+    // the file exactly once instead of once for the scan + once per read.
+    // Extended in-memory as the session appends, so reads never re-read the
+    // file for events that already arrived this session.
+    this._plain = null;
+    // Cached, decrypted checkpoint (see loadCheckpoint). Read once, reused.
+    this._checkpoint = null;
   }
 
   async open() {
@@ -225,6 +239,7 @@ export class EventStore {
 
     const body = raw.subarray(header.headerSize);
     const plain = await decryptAllChunks(body);
+    this._plain = plain.length > 0 ? plain : null;
     if (plain.length === 0) return;
 
     const view = new DataView(plain.buffer, plain.byteOffset, plain.byteLength);
@@ -290,6 +305,10 @@ export class EventStore {
     if (this._useOPFS && vault.isUnlocked()) {
       try {
         await this._writeToOPFS(packed);
+        // Keep the session cache current so a later getAll/getEventsSince
+        // does not re-read + re-decrypt the file for events that already
+        // arrived in this session.
+        if (this._plain) this._plain = concatBytes(this._plain, packed);
       } catch (e) {
         console.warn('[store] OPFS write failed:', e);
       }
@@ -335,6 +354,7 @@ export class EventStore {
   }
 
   async _readDecryptedBody() {
+    if (this._plain) return this._plain;
     if (!this._useOPFS || !this._fileHandle) return null;
     if (!vault.isUnlocked()) return null;
     try {
@@ -342,7 +362,9 @@ export class EventStore {
       if (file.size <= this._headerSize) return null;
       const raw = new Uint8Array(await file.arrayBuffer());
       const body = raw.subarray(this._headerSize);
-      return await decryptAllChunks(body);
+      const plain = await decryptAllChunks(body);
+      this._plain = plain.length > 0 ? plain : null;
+      return this._plain;
     } catch (e) {
       console.warn('[store] read failed:', e);
       return null;
@@ -384,6 +406,7 @@ export class EventStore {
   }
 
   async loadCheckpoint() {
+    if (this._checkpoint !== null) return this._checkpoint;
     if (!this._useOPFS || !this._dirHandle) return null;
     if (!vault.isUnlocked()) return null;
     try {
@@ -393,16 +416,37 @@ export class EventStore {
       const obj = await vault.decryptJSON(bytes);
       if (obj.cursor > this._cursor) {
         console.warn('[store] Checkpoint cursor ahead of log — discarding');
+        this._checkpoint = null;
         return null;
       }
+      // Checkpoints written before the entitiesByType index existed (or that
+      // survived a different fold) get their index rebuilt here, once, so the
+      // UI can seed its fold from this state without a full rescan.
+      if (obj.state && !obj.state.entitiesByType) {
+        const idx = {};
+        for (const [a, e] of Object.entries(obj.state.entities || {})) {
+          const t = e && e._type;
+          if (!t) continue;
+          (idx[t] ??= []).push(a);
+        }
+        obj.state.entitiesByType = idx;
+      }
+      this._checkpoint = obj;
       return obj;
     } catch {
+      this._checkpoint = null;
       return null;
     }
   }
 
+  getCheckpoint() { return this._checkpoint; }
+
   shouldCheckpoint() {
-    return this._appendsSinceCheckpoint >= CHECKPOINT_INTERVAL;
+    // Adaptive interval: every 200 appends in a small room, backing off as
+    // the log grows so a 1M-event room is not serializing + encrypting its
+    // whole state every 200 writes. Grows ~√count, capped at 5000.
+    const interval = Math.min(5000, Math.max(200, Math.round(Math.sqrt(this._count) * 10)));
+    return this._appendsSinceCheckpoint >= interval;
   }
 
   getCursor()   { return this._cursor; }
@@ -417,6 +461,8 @@ export class EventStore {
     this._eventIdSet = new Set();
     this._fileHandle = null;
     this._appendsSinceCheckpoint = 0;
+    this._plain = null;
+    this._checkpoint = null;
     if (this._useOPFS && this._dirHandle) {
       try { await this._dirHandle.removeEntry(this.fileName); } catch {}
       try { await this._dirHandle.removeEntry(this.checkpointName); } catch {}
