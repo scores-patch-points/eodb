@@ -116,8 +116,10 @@ log, so they are not exported. These seven are, from `src/operators.js`:
 | `con(roomId, srcAnchor, tgtAnchor, relType)` | CON ⤫ | `{ source_anchor, target_anchor, relation_type }` | Typed link between two existing anchors. |
 | `syn(roomId, inputAnchors, output)` | SYN △ | `{ input_anchors, output }` | Merge several anchors into a new synthesized entity. |
 | `eva(roomId, anchor, criterion, result, note?)` | EVA ⊨ | `{ anchor, criterion, result, note }` | Record a judgment (pass/fail/hold + note) against a criterion. |
-| `rec(roomId, scope, beforeFrame, afterFrame)` | REC ⊛ | `{ scope, before_frame, after_frame }` | The *meaning* of a field/frame changed (schema reinterpretation). Rare. |
+| `rec(roomId, scope, beforeFrame, afterFrame)` | REC ◉ | `{ scope, before_frame, after_frame }` | The *meaning* of a field/frame changed (schema reinterpretation). Rare. |
 | `defSchema(roomId, path, value)` | DEF ⊢ | `{ anchor:null, path:'_schema.'+path, value }` | Publish schema into the log (see §5.4). |
+
+> REC's glyph is ◉ (a ring around a filled circle: the retraced run kept as record, inside a new open frame). It was ⊛ until 2026-10-06. Events stored earlier keep ⊛; read both as REC. See the EO wiki, "Operator Naming".
 
 All emitters are `async` and return the local txn id (string) except `ins`,
 which returns the new `anchor` (string). Anchors look like
