@@ -1,0 +1,7 @@
+{
+  "name": "eodb",
+  "ground": [],
+  "figure": [],
+  "pattern": ["io.matrix-events.ins", "io.matrix-events.def", "io.matrix-events.schema", "io.matrix-events.seg", "io.matrix-events.con", "io.matrix-events.syn", "io.matrix-events.eva", "io.matrix-events.rec"],
+  "out": ["io.matrix-events.ins", "io.matrix-events.def", "io.matrix-events.schema", "io.matrix-events.seg", "io.matrix-events.con", "io.matrix-events.syn", "io.matrix-events.eva", "io.matrix-events.rec"]
+}

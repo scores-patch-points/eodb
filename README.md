@@ -91,6 +91,20 @@ This removes the backend-as-a-service tier wherever the unit of trust is small. 
 
 The honest target: CRMs, case management, trust verticals, trackers, journals, private and small-team apps — anywhere the membership of any one container stays small. When you outgrow it, the exit is clean: every event is a signed JSON object you own, replayable into anything that reads JSON.
 
+## Leaving Matrix as the store: the pharos importer
+
+The data does not have to live in Matrix timeline events. `tools/pharosImport.mjs` replays a room's stored operator events into a **pharos** (one folder per room, one writer file per Matrix sender) and rebuilds the events from it. `src/pharosMap.js` is the mapping, pure and browser-safe: an event becomes a weft whose `kind` is the event type and whose `body` is the event content untouched, with the event id, origin timestamp and sender in `basis`. So the mapping is lossless.
+
+```
+node tools/pharosImport.mjs import --events room.json --out <pharos folder> [--ns io.matrix-events] [--room '!id:server']
+node tools/pharosImport.mjs export --pharos <pharos folder> [--ns io.matrix-events]
+```
+
+- **Checked against this repo's own `fold.js`:** after a round trip the whole folded state (entities, partitions, connections, frames, schema, violations) is identical, not just the state hash. Importing the same events again weaves nothing new, because the pharos treats an identical entry from the same writer as one entry.
+- **Not data, so not imported:** undecryptable events, other namespaces and empty events are counted and skipped, never guessed. The one visible difference is that the room counts an undecryptable event in `_undecryptable` and the pharos does not hold it.
+- **Door:** the pharos library is reached only through the sha256-pinned pointer in `door/pharos.json` (`node <pharos>/bin/pharos.mjs verify pharos-core --target door`). It expects the pharos repo beside this one; nothing else of any sibling repo is imported.
+- **Not built:** reading from a live Matrix room (the input is a JSON or JSONL file of timeline events), an in-browser store, and sync between replicas. The pharos library is Node-only today, so this is the migration and the mapping, not yet the app running on a pharos. Large rooms are untested: every `weave` re-reads the writer files.
+
 ## Modules
 
 ### `client.js`

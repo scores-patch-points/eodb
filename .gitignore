@@ -1,3 +1,5 @@
 node_modules/
 dist/
 .DS_Store
+# the pharos installer's receipts hold this machine's absolute paths
+door/.pharos/

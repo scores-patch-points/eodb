@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "pharos:import": "node tools/pharosImport.mjs import",
+    "pharos:export": "node tools/pharosImport.mjs export"
   },
   "dependencies": {
     "@babel/standalone": "^7.29.0",

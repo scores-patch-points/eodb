@@ -1,0 +1,7 @@
+{
+  "v": 1,
+  "kind": "pharos-pointer",
+  "lib": "../../pharos/lib/pharos.mjs",
+  "sha256": "e869302bbaafd31cde17ceced135be6188f6ec92bab00c6f9ba446fc7b7c3e16",
+  "wrote": {}
+}
