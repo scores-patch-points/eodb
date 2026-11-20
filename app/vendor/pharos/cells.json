@@ -1,0 +1,292 @@
+{
+ "v": 1,
+ "source": "27 cells: operator chain x grain (generated 2026-11-11; data, never code)",
+ "chain": [
+  "NUL",
+  "SIG",
+  "INS",
+  "SEG",
+  "CON",
+  "SYN",
+  "DEF",
+  "EVA",
+  "REC"
+ ],
+ "grains": [
+  "Ground",
+  "Figure",
+  "Pattern"
+ ],
+ "cells": [
+  {
+   "id": "NUL·Ground",
+   "rank": 0,
+   "op": "NUL",
+   "grain": "Ground",
+   "mode": "Differentiate",
+   "domain": "Existence",
+   "terrain": "Void",
+   "stance": "Clearing"
+  },
+  {
+   "id": "NUL·Figure",
+   "rank": 1,
+   "op": "NUL",
+   "grain": "Figure",
+   "mode": "Differentiate",
+   "domain": "Existence",
+   "terrain": "Entity",
+   "stance": "Dissecting"
+  },
+  {
+   "id": "NUL·Pattern",
+   "rank": 2,
+   "op": "NUL",
+   "grain": "Pattern",
+   "mode": "Differentiate",
+   "domain": "Existence",
+   "terrain": "Kind",
+   "stance": "Unraveling"
+  },
+  {
+   "id": "SIG·Ground",
+   "rank": 3,
+   "op": "SIG",
+   "grain": "Ground",
+   "mode": "Relate",
+   "domain": "Existence",
+   "terrain": "Void",
+   "stance": "Tending"
+  },
+  {
+   "id": "SIG·Figure",
+   "rank": 4,
+   "op": "SIG",
+   "grain": "Figure",
+   "mode": "Relate",
+   "domain": "Existence",
+   "terrain": "Entity",
+   "stance": "Binding"
+  },
+  {
+   "id": "SIG·Pattern",
+   "rank": 5,
+   "op": "SIG",
+   "grain": "Pattern",
+   "mode": "Relate",
+   "domain": "Existence",
+   "terrain": "Kind",
+   "stance": "Tracing"
+  },
+  {
+   "id": "INS·Ground",
+   "rank": 6,
+   "op": "INS",
+   "grain": "Ground",
+   "mode": "Generate",
+   "domain": "Existence",
+   "terrain": "Void",
+   "stance": "Cultivating"
+  },
+  {
+   "id": "INS·Figure",
+   "rank": 7,
+   "op": "INS",
+   "grain": "Figure",
+   "mode": "Generate",
+   "domain": "Existence",
+   "terrain": "Entity",
+   "stance": "Making"
+  },
+  {
+   "id": "INS·Pattern",
+   "rank": 8,
+   "op": "INS",
+   "grain": "Pattern",
+   "mode": "Generate",
+   "domain": "Existence",
+   "terrain": "Kind",
+   "stance": "Composing"
+  },
+  {
+   "id": "SEG·Ground",
+   "rank": 9,
+   "op": "SEG",
+   "grain": "Ground",
+   "mode": "Differentiate",
+   "domain": "Structure",
+   "terrain": "Field",
+   "stance": "Clearing"
+  },
+  {
+   "id": "SEG·Figure",
+   "rank": 10,
+   "op": "SEG",
+   "grain": "Figure",
+   "mode": "Differentiate",
+   "domain": "Structure",
+   "terrain": "Link",
+   "stance": "Dissecting"
+  },
+  {
+   "id": "SEG·Pattern",
+   "rank": 11,
+   "op": "SEG",
+   "grain": "Pattern",
+   "mode": "Differentiate",
+   "domain": "Structure",
+   "terrain": "Network",
+   "stance": "Unraveling"
+  },
+  {
+   "id": "CON·Ground",
+   "rank": 12,
+   "op": "CON",
+   "grain": "Ground",
+   "mode": "Relate",
+   "domain": "Structure",
+   "terrain": "Field",
+   "stance": "Tending"
+  },
+  {
+   "id": "CON·Figure",
+   "rank": 13,
+   "op": "CON",
+   "grain": "Figure",
+   "mode": "Relate",
+   "domain": "Structure",
+   "terrain": "Link",
+   "stance": "Binding"
+  },
+  {
+   "id": "CON·Pattern",
+   "rank": 14,
+   "op": "CON",
+   "grain": "Pattern",
+   "mode": "Relate",
+   "domain": "Structure",
+   "terrain": "Network",
+   "stance": "Tracing"
+  },
+  {
+   "id": "SYN·Ground",
+   "rank": 15,
+   "op": "SYN",
+   "grain": "Ground",
+   "mode": "Generate",
+   "domain": "Structure",
+   "terrain": "Field",
+   "stance": "Cultivating"
+  },
+  {
+   "id": "SYN·Figure",
+   "rank": 16,
+   "op": "SYN",
+   "grain": "Figure",
+   "mode": "Generate",
+   "domain": "Structure",
+   "terrain": "Link",
+   "stance": "Making"
+  },
+  {
+   "id": "SYN·Pattern",
+   "rank": 17,
+   "op": "SYN",
+   "grain": "Pattern",
+   "mode": "Generate",
+   "domain": "Structure",
+   "terrain": "Network",
+   "stance": "Composing"
+  },
+  {
+   "id": "DEF·Ground",
+   "rank": 18,
+   "op": "DEF",
+   "grain": "Ground",
+   "mode": "Differentiate",
+   "domain": "Interpretation",
+   "terrain": "Atmosphere",
+   "stance": "Clearing"
+  },
+  {
+   "id": "DEF·Figure",
+   "rank": 19,
+   "op": "DEF",
+   "grain": "Figure",
+   "mode": "Differentiate",
+   "domain": "Interpretation",
+   "terrain": "Lens",
+   "stance": "Dissecting"
+  },
+  {
+   "id": "DEF·Pattern",
+   "rank": 20,
+   "op": "DEF",
+   "grain": "Pattern",
+   "mode": "Differentiate",
+   "domain": "Interpretation",
+   "terrain": "Paradigm",
+   "stance": "Unraveling"
+  },
+  {
+   "id": "EVA·Ground",
+   "rank": 21,
+   "op": "EVA",
+   "grain": "Ground",
+   "mode": "Relate",
+   "domain": "Interpretation",
+   "terrain": "Atmosphere",
+   "stance": "Tending"
+  },
+  {
+   "id": "EVA·Figure",
+   "rank": 22,
+   "op": "EVA",
+   "grain": "Figure",
+   "mode": "Relate",
+   "domain": "Interpretation",
+   "terrain": "Lens",
+   "stance": "Binding"
+  },
+  {
+   "id": "EVA·Pattern",
+   "rank": 23,
+   "op": "EVA",
+   "grain": "Pattern",
+   "mode": "Relate",
+   "domain": "Interpretation",
+   "terrain": "Paradigm",
+   "stance": "Tracing"
+  },
+  {
+   "id": "REC·Ground",
+   "rank": 24,
+   "op": "REC",
+   "grain": "Ground",
+   "mode": "Generate",
+   "domain": "Interpretation",
+   "terrain": "Atmosphere",
+   "stance": "Cultivating"
+  },
+  {
+   "id": "REC·Figure",
+   "rank": 25,
+   "op": "REC",
+   "grain": "Figure",
+   "mode": "Generate",
+   "domain": "Interpretation",
+   "terrain": "Lens",
+   "stance": "Making"
+  },
+  {
+   "id": "REC·Pattern",
+   "rank": 26,
+   "op": "REC",
+   "grain": "Pattern",
+   "mode": "Generate",
+   "domain": "Interpretation",
+   "terrain": "Paradigm",
+   "stance": "Composing"
+  }
+ ]
+}
