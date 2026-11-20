@@ -29,6 +29,17 @@ const hex = (u) => [...u].map((b) => b.toString(16).padStart(2, '0')).join('');
 const unhex = (h) => Uint8Array.from(h.match(/../g) || [], (x) => parseInt(x, 16));
 export const sha = (bytes) => hex(core.sha256(bytes));
 
+// The page's own hashing silently dropped `undefined` fields; pharos refuses them (an undefined value has no canonical form). Normalise the same way the
+// page did: undefined keys disappear, undefined array items and non-finite numbers become null, raw bytes stay bytes.
+export function clean(v) {
+  if (v === undefined) return undefined;
+  if (v === null || typeof v === 'string' || typeof v === 'boolean') return v;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (v instanceof Uint8Array) return v;
+  if (Array.isArray(v)) return v.map((x) => { const c = clean(x); return c === undefined ? null : c; });
+  if (typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) { const c = clean(v[k]); if (c !== undefined) o[k] = c; } return o; }
+  return null; // functions, symbols
+}
 let uniq = 0;
 function addrOf(op, b) {
   const n = () => `${Date.now().toString(36)}${(++uniq).toString(36)}`;
@@ -72,12 +83,13 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
   if (!granted) A.grantCap(h, root, { subject: dev.pub, writer: `${devId}.*`, scope: '*', rights: ['read', 'write', 'grant'] });
 
   // verification: done in full once at open, then incrementally for what this device signs
-  let okSet = new Set(), sigOf = new Map(), signing = null, timer = null, listeners = new Set();
+  let okSet = new Set(), sigOf = new Map(), signing = null, timer = null, listeners = new Set(), statusListeners = new Set();
   const recompute = () => { const v = A.verifyAccess(h, { roots }); okSet = new Set(v.counted); sigOf = new Map(); for (const e of core.entries(h)) if (e.kind === 'signature' && e.body) for (const id of e.body.ids || []) if (!sigOf.has(id)) sigOf.set(id, e.body.sig); };
   const signNow = () => { const r = I.signNew(h, dev); if (r.signed) { const e = r.entry || core.entries(h).filter((x) => x.kind === 'signature').at(-1); const valid = I.verifyBytes(dev.pub, new TextEncoder().encode(`pharos-sig/1\n${h.name}\n${[...e.body.ids].sort().join('\n')}`), e.body.sig); if (valid) for (const id of e.body.ids) { okSet.add(id); sigOf.set(id, e.body.sig); } } return r.signed; };
   signNow(); recompute();
-  const changed = () => { for (const f of listeners) try { f(); } catch (err) { /* a listener must not break the engine */ } };
-  const soon = () => { if (timer) return; timer = setTimeout(() => { timer = null; signNow(); changed(); }, 120); };
+  const changed = () => { for (const f of listeners) try { f(); } catch (err) { /* a listener must not break the engine */ } };       // the DATA changed (another tab wrote)
+  const status = () => { for (const f of statusListeners) try { f(); } catch (err) { /* ditto */ } };                                      // only signing or saving progressed
+  const soon = () => { if (timer) return; timer = setTimeout(() => { timer = null; signNow(); status(); }, 120); };
   store.watch(() => { recompute(); changed(); });                  // another tab wrote: re-verify and tell the page
   const stopListen = store.listen();
 
@@ -94,7 +106,7 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
     /** weave one page operation; returns it in the page's shape. Sync: the entry exists at once; signing and saving follow. */
     append(op, body) {
       if (!OPS[op]) throw new core.PharosError('UNKNOWN_OP', `unknown operation "${op}"`);
-      const [kind, cell] = OPS[op]; const spec = { cell, kind, addr: addrOf(op, body), body };
+      body = clean(body); const [kind, cell] = OPS[op]; const spec = { cell, kind, addr: addrOf(op, body), body };
       if (op === 'retract') { spec.of = [body.of]; spec.body = { why: body.why || 'retract' }; }
       const e = core.weave(h, spec); soon();
       return shape(e, space.view().length);
@@ -106,10 +118,13 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
       return out;
     },
     /** wait until everything so far is signed and saved; rejects with the real error if saving failed */
-    async settle() { clearTimeout(timer); timer = null; signNow(); await store.flush(); await blobStore.flush(); changed(); },
+    async settle() { clearTimeout(timer); timer = null; signNow(); try { await store.flush(); await blobStore.flush(); } finally { status(); } },
     verify() { recompute(); return { counted: okSet.size, uncounted: A.verifyAccess(h, { roots }).uncounted }; },
     report() { const r = store.report(), b = blobStore.report(); const unsigned = core.entries(h).filter((e) => e.by === writer && !INFRA.has(e.kind) && !okSet.has(e.id)).length; return { backend: r.backend, encrypted: r.encrypted, unpersisted: r.unpersisted + b.unpersisted, unsigned, damaged: r.damaged.length + b.damaged.length, gaps: r.gaps.length + b.gaps.length, lastError: r.lastError || b.lastError, entries: core.entries(h).length }; },
+    /** another tab changed the data */
     onChange(f) { listeners.add(f); return () => listeners.delete(f); },
+    /** signing or saving progressed (flags and counts changed, the data did not) */
+    onStatus(f) { statusListeners.add(f); return () => statusListeners.delete(f); },
     close() { clearTimeout(timer); stopListen(); store.close(); blobStore.close(); },
     _handle: h, _store: store,
   };
