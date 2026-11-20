@@ -6,7 +6,7 @@
 const te = new TextEncoder();
 const httpErr = (r, what) => Object.assign(new Error(`relay ${what} failed: ${r.status}`), { status: r.status });
 // a route that is down must fail fast, not hang the whole sync: every request aborts after a short wait
-const TIMEOUT_MS = 10000;
+const TIMEOUT_MS = 5000;
 const fetchT = async (u, opts = {}) => { const c = new AbortController(); const t = setTimeout(() => c.abort(), TIMEOUT_MS); try { return await fetch(u, { ...opts, signal: c.signal }); } finally { clearTimeout(t); } };
 
 export function httpCarrier(base) {
