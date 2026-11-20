@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openSpace, OPS, sha } from '../engine.mjs';
+import { openSpace, OPS, sha, clean } from '../engine.mjs';
 import * as B from '../vendor/pharos/browser-store.mjs';
 import * as core from '../vendor/pharos/core.mjs';
 
@@ -126,4 +126,12 @@ test('10. a failure saving FILES is as visible as one saving the log', async () 
   b.blobBackend.failNextPut(new Error('blob store full'), 100); const bytes = new Uint8Array([9, 9, 9]); space.blobs.put(sha(bytes), bytes, 'x/y');
   await assert.rejects(space.settle(), /blob store full/); assert.ok(space.report().unpersisted > 0);
   b.blobBackend.failNextPut(null, 0); await space.settle(); assert.equal(space.report().unpersisted, 0);
+});
+
+test('11. bodies the page builds loosely are normalised the way the page\'s own hashing did: undefined dropped, NaN and Infinity null, bytes kept', async () => {
+  assert.deepEqual(clean({ a: 1, b: undefined, c: [1, undefined, NaN], d: { e: undefined, f: Infinity }, g: null }), { a: 1, c: [1, null, null], d: { f: null }, g: null });
+  const bytes = new Uint8Array([1, 2]); assert.equal(clean({ x: bytes }).x, bytes);
+  const space = await open(mk());
+  const e = space.append('read', { hash: 'h1', kind: 'table', columns: undefined, tier: 'lite', facts: { n: NaN, ok: true } });   // the shape that failed in the real page
+  assert.deepEqual(e.body, { hash: 'h1', kind: 'table', tier: 'lite', facts: { n: null, ok: true } }); space.close();
 });
