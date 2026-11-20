@@ -42,9 +42,12 @@ export function memoryBackend() {
   };
 }
 
+/** true when IndexedDB is actually reachable (private browsing and some browsers hide or refuse it). */
+export function idbAvailable() { try { return typeof indexedDB !== 'undefined' && !!indexedDB; } catch (e) { return false; } }
+
 /** IndexedDB backend (browser). One database per store name: chunks keyed [stream, seq] (add-only, so a second writer is an error), plus meta. */
 export function idbBackend(dbName = 'pharos') {
-  const open = () => new Promise((res, rej) => { const r = indexedDB.open(dbName, 1); r.onupgradeneeded = () => { r.result.createObjectStore('chunks', { keyPath: ['stream', 'seq'] }); r.result.createObjectStore('meta'); }; r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  const open = () => new Promise((res, rej) => { if (!idbAvailable()) return rej(fail('NO_IDB', 'IndexedDB is not available in this browser context')); const r = indexedDB.open(dbName, 1); r.onupgradeneeded = () => { r.result.createObjectStore('chunks', { keyPath: ['stream', 'seq'] }); r.result.createObjectStore('meta'); }; r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
   let dbp = null; const db = () => (dbp ||= open());
   const tx = async (store, mode, fn) => { const d = await db(); return new Promise((res, rej) => { const t = d.transaction(store, mode); let out; Promise.resolve(fn(t.objectStore(store), t)).then((v) => { out = v; }).catch(rej); t.oncomplete = () => res(out); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); }); };
   const req = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
@@ -106,8 +109,10 @@ export function opfsBackend(dbName = 'pharos') {
 
 /** the best backend this device offers: OPFS when it works, otherwise IndexedDB. Returns { backend, kind }. */
 export async function autoBackend(dbName = 'pharos') {
-  if (await opfsAvailable()) return { backend: opfsBackend(dbName), kind: 'opfs' };
-  return { backend: idbBackend(dbName), kind: 'idb' };
+  // OPFS keeps its key material in a small IndexedDB database, so it needs IndexedDB too.
+  if (idbAvailable() && await opfsAvailable()) return { backend: opfsBackend(dbName), kind: 'opfs' };
+  if (idbAvailable()) return { backend: idbBackend(dbName), kind: 'idb' };
+  return { backend: memoryBackend(), kind: 'memory' };
 }
 
 /** ask the browser not to evict this origin's storage; true if granted (it may prompt, so call it from a user action or at first write) */
