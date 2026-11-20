@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Your database: everything folded from the pharos log</title>
+<title>Your database</title>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.5.3/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hyperformula@3.5.0/dist/hyperformula.full.min.js"></script>
+<script src="./vendor/qrcode.js"></script>
 <script type="module">
 import {openSpace} from './engine.mjs';
 import * as B from './vendor/pharos/browser-store.mjs';
@@ -25,11 +26,13 @@ aside{width:268px;background:#fbfaf7;border-right:1px solid var(--line);padding:
 .wsh:hover,.it:hover{background:#f0eee8}.on>.wsh,.it.on{background:var(--accbg);color:var(--acc)}
 .it{display:flex;gap:7px;align-items:center;padding:5px 8px 5px 28px;border-radius:8px;cursor:pointer;color:#33332f}
 .it .n{margin-left:auto;color:var(--mut);font-size:12px}
-.mini{margin:2px 0 4px 28px;display:flex;gap:6px}.mini input{padding:4px 8px;font:inherit;border:1px solid var(--line);border-radius:6px;width:100%}
+.mini{margin:2px 0 4px 28px;display:flex;gap:6px;flex-wrap:nowrap}.mini input{padding:4px 8px;font:inherit;border:1px solid var(--line);border-radius:6px;min-width:0;flex:1 1 auto;width:auto}.mini button{flex:0 0 auto}
 .link{background:none;border:0;color:var(--mut);cursor:pointer;font:inherit;padding:4px 8px 4px 28px;display:flex;gap:6px;align-items:center}.link:hover{color:var(--ink)}
 .limit{margin:12px 8px;font-size:12px;color:var(--mut);display:flex;gap:6px}
 section.main{flex:1;min-width:0;padding:16px 24px 80px}
 .crumb{color:var(--mut);font-size:13px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.crumb .lk{display:inline-flex;gap:5px;align-items:center;border:0;background:none;color:var(--mut);font:inherit;padding:0;cursor:pointer}
+.crumb .lk:hover{color:var(--acc);text-decoration:underline}
 h1{font-size:21px;margin:4px 0 0}h2{font-size:16px;margin:0 0 4px}.sub{color:var(--mut);margin:0 0 12px;font-size:14px}
 nav.tabs{display:flex;gap:4px;margin:12px 0 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
 nav.tabs button{background:none;border:0;padding:9px 13px;font:inherit;color:var(--mut);cursor:pointer;border-bottom:2px solid transparent;display:flex;gap:6px;align-items:center}
@@ -57,6 +60,15 @@ input[type=text],select{font:inherit;padding:8px 10px;border:1px solid var(--lin
 .res{display:flex;gap:10px;align-items:center;padding:9px 8px;border-radius:8px;cursor:pointer;border-bottom:1px solid var(--line)}.res:hover{background:#f4f3ee}.res small{color:var(--mut);display:block}
 .gt{font-size:11.5px;letter-spacing:.04em;color:var(--mut);margin:12px 0 6px}
 .types{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}
+.files{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.fcard{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;padding:12px;background:#fff;min-width:0;cursor:pointer}
+.fcard:hover{border-color:var(--acc);box-shadow:0 2px 12px rgba(0,0,0,.07)}
+.fcard .fic{font-size:30px;line-height:1;color:var(--mut);padding:4px 0 10px}
+.fcard .fn{font-size:13px;font-weight:600;line-height:1.3;word-break:break-word}
+.fcard .fm{font-size:12px;color:var(--mut);margin-top:2px}
+.fcard .fa{display:flex;gap:2px;margin-top:10px;opacity:0;transition:opacity .12s}
+.fcard:hover .fa,.fcard:focus-within .fa{opacity:1}
+.fcard .fa .b{padding:4px 6px}
 .ty{display:flex;gap:8px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:8px 10px;cursor:pointer;background:#fff}.ty:hover{border-color:var(--acc);background:#f6faf8}
 .ty small{display:block;color:var(--mut);font-size:12px;line-height:1.3}.ty .i{font-size:18px;color:var(--acc);margin-top:2px}
 .log{border-left:2px solid var(--line);margin-left:8px;padding-left:16px}.ent{position:relative;padding:8px 0}.ent:before{content:"";position:absolute;left:-23px;top:14px;width:10px;height:10px;border-radius:50%;background:#fff;border:2px solid var(--acc)}
@@ -215,7 +227,7 @@ async function seed(){
  D=fold();
 }
 /* ================= UI state ================= */
-let U={dpanel:null,hist:null,share:false,cur:null,cb:null,focus:null,recmsg:'',open:null,ws:'w1',sel:'ws',tab:'data',mtab:'match',src:null,adding:null,edit:null,tt:null,virt:null,msg:'',pickCol:null,pickRel:'close',driftOn:false,driftDone:false,drop:''};
+let U={dpanel:null,hist:null,share:false,cur:null,cb:null,focus:null,recmsg:'',open:null,view:null,qr:false,ws:'w1',sel:'ws',tab:'data',mtab:'match',src:null,adding:null,edit:null,tt:null,virt:null,msg:'',pickCol:null,pickRel:'close',driftOn:false,driftDone:false,drop:''};
 const W=()=>D.ws.find(w=>w.id===U.ws);
 const TB=id=>D.tb.find(t=>t.id===id);
 const wsTables=w=>D.tb.filter(t=>t.ws===w);
@@ -234,7 +246,7 @@ function cell(f,v){
  if(v===''||v==null)return '<span class="note">empty</span>';
  switch(f.t){case 'currency':return '<div class="num">$'+Number(v).toLocaleString()+'</div>';case 'number':case 'percent':return '<div class="num">'+esc(v)+'</div>';
   case 'checkbox':return v?ic('check-square'):'<span class="note">'+ic('square')+'</span>';case 'single':return '<span class="pill '+pillc(v)+'">'+esc(v)+'</span>';
-  case 'link':return '<span class="chip c-b">'+ic('link-simple')+' '+esc(v)+'</span>';case 'attach':return '<span class="chip c-n">'+ic('paperclip')+' '+esc(v)+'</span>';
+  case 'link':return '<span class="chip c-b">'+ic('link-simple')+' '+esc(v)+'</span>';case 'attach':{const fh=fileHashOf(v);return fh?'<button class="b" style="padding:3px 8px" title="Open file" onclick="openFile(\''+fh+'\')">'+ic('paperclip')+' '+esc(v)+'</button>':'<span class="chip c-n">'+ic('paperclip')+' '+esc(v)+'</span>';}
   case 'email':case 'url':return '<span style="color:var(--blue)">'+esc(v)+'</span>';default:return esc(v);}}
 /* ---- CSV (Papa Parse when loaded) ---- */
 function parseCsv(text){if(window.Papa){const r=Papa.parse(text,{header:true,skipEmptyLines:true});return {cols:r.meta.fields||[],rows:r.data.map(o=>(r.meta.fields||[]).map(c=>o[c]==null?'':String(o[c])))};}
@@ -260,13 +272,14 @@ function narrowNav(){const on=matchMedia('(max-width:800px)').matches;document.b
 document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('aside .it, aside .wsh, aside .link')&&matchMedia('(max-width:800px)').matches)NAVOPEN=false;},true);
 addEventListener('resize',()=>{if(document.querySelector('aside'))narrowNav();});
 function render0(){side();const m=document.getElementById('main');
- m.innerHTML=U.sel==='docs'?vDocs('doc'):U.sel==='notes'?vDocs('note'):/^doc:/.test(U.sel)?vDoc(U.sel.slice(4)):U.sel==='ws'?vWs():U.sel==='files'?vFiles():U.sel==='log'?vLog():U.sel==='match'?vMatch():vTable();
+ m.innerHTML=U.sel==='docs'?vDocs('doc'):U.sel==='notes'?vDocs('note'):/^doc:/.test(U.sel)?vDoc(U.sel.slice(4)):U.sel==='ws'?vWs():U.sel==='files'?vFiles():U.sel==='log'?vLog():U.sel==='match'?vMatch():U.sel==='profile'?vProfile():vTable();
  if(U.sel==='files')wireDrop();
+ if(U.sel==='profile')setTimeout(drawQr,0);
  docFocus();
  const ed=document.getElementById('ed');if(ed){ed.focus();ed.select&&ed.select();}}
 function side(){
- let h='<div class="brand">'+ic('hard-drives')+'<div>Your database<small>Stored: the pharos log and file bytes. Nothing else.</small></div></div>';
- h+='<div class="it '+(U.sel==='log'?'on':'')+'" style="padding-left:8px;margin-top:8px" onclick="U.sel=\'log\';render()">'+ic('scroll')+' Pharos log<span class="n">'+LOG.length+'</span></div><div class="side-h">WORKSPACES</div>';
+ let h='<div class="brand">'+ic('hard-drives')+'<div>Your database<small>Stored: your signed log and file bytes. Nothing else.</small></div></div>';
+ h+='<div class="it '+(U.sel==='profile'?'on':'')+'" onclick="U.sel=\'profile\';render()">'+ic('user')+' Profile</div><div class="it '+(U.sel==='log'?'on':'')+'" style="padding-left:8px;margin-top:8px" onclick="U.sel=\'log\';render()">'+ic('scroll')+' Activity log<span class="n">'+LOG.length+'</span></div><div class="side-h">WORKSPACES</div>';
  for(const w of D.ws){const on=U.ws===w.id;
   h+='<div class="ws '+(on?'on':'')+'"><div class="wsh" onclick="goWs(\''+w.id+'\')">'+ic(on?'folder-open':'folder')+' '+esc(w.name)+'</div>';
   if(on){h+=wsTables(w.id).map(t=>'<div class="it '+(U.sel===t.id?'on':'')+'" onclick="goTb(\''+t.id+'\')">'+ic('table')+' '+esc(t.name)+'<span class="n">'+t.r.length+'</span></div>').join('')+
@@ -282,14 +295,16 @@ function goTb(id){U.sel=id;U.tab='data';U.edit=null;render();}
 async function newTb(){const n=(document.getElementById('nt').value||'').trim()||'Untitled table';const id=uid('t');U.adding=null;
  await appendQ('tb+',{id,ws:U.ws,name:n});for(const f of [{n:'Name',t:'text'},{n:'Notes',t:'longtext'}])await appendQ('fld+',{tb:id,id:uid('f'),...f});D=fold();goTb(id);}
 async function newWs(){const n=(document.getElementById('nw').value||'').trim()||'Untitled workspace';const id=uid('w');U.adding=null;await appendQ('ws+',{id,name:n});D=fold();goWs(id);}
-const crumb=a=>'<div class="crumb">'+ic('hard-drives')+' Your database '+ic('caret-right')+' '+ic('folder-open')+' '+esc(W().name)+(a?' '+ic('caret-right')+' '+a:'')+'</div>';
-/* ---- workspace home ---- */
+const crumb=a=>'<div class="crumb"><button class="lk" onclick="goHome()">'+ic('hard-drives')+' Your database</button>'+ic('caret-right')+'<button class="lk" onclick="goHome()">'+ic('folder-open')+' '+esc(W().name)+'</button>'+(a?' '+ic('caret-right')+' '+a:'')+'</div>';
+function goHome(){U.sel='ws';render();}/* ---- workspace home ---- */
 function vWs(){const tbs=wsTables(U.ws),fl=wsFiles(U.ws);
- let h=crumb('')+'<h1>'+esc(W().name)+'</h1><p class="sub">Tables, rows and fields below are not stored. They are folded from the pharos log each time. Files are the only bytes kept besides the log.</p><div class="row">';
+ let h=crumb('')+'<h1>'+esc(W().name)+'</h1><p class="sub">Tables, rows and fields below are not stored. They are folded from the signed log each time. Files are the only bytes kept besides the log.</p><div class="row">';
  h+='<div class="grow"><div class="gt">TABLES ('+tbs.length+')</div>'+(tbs.map(t=>'<div class="card" style="margin-bottom:8px;cursor:pointer" onclick="goTb(\''+t.id+'\')"><b>'+ic('table')+' '+esc(t.name)+'</b>'+(t.std?' <span class="chip c-n">follows '+t.std+'</span>':'')+'<div class="note">'+t.f.length+' fields, '+t.r.length+' rows</div></div>').join('')||'<p class="note">No tables yet.</p>')+'</div>';
- h+='<div class="grow"><div class="gt">FILES AND SOURCES</div>'+(fl.map(f=>{const csv=/csv/.test(f.type)||/\.csv$/i.test(f.name);const u=csv?unresolved(f.hash):0;return '<div class="card" style="margin-bottom:8px"><b>'+ic(csv?'file-csv':'file')+' '+esc(f.name)+'</b><div class="note">'+fmtSize(f.size)+'</div>'+(csv?'<div style="margin:8px 0">'+(u?'<span class="chip c-w">'+u+' columns need matching</span>':'<span class="chip c-ok">All columns reviewed</span>')+'</div><button class="b p" onclick="openMatch(\''+f.hash+'\')">Match columns '+ic('arrow-right')+'</button>':'')+'</div>';}).join('')||'<p class="note">No files yet.</p>')+'</div></div>';
+ h+='<div class="grow"><div class="gt">FILES AND SOURCES</div>'+(fl.map(f=>{const csv=/csv/.test(f.type)||/\.csv$/i.test(f.name);const u=csv?unresolved(f.hash):0;return '<div class="card" style="margin-bottom:8px;cursor:pointer" onclick="openFile(\''+f.hash+'\')"><b>'+ic(csv?'file-csv':'file')+' '+esc(f.name)+'</b><div class="note">'+fmtSize(f.size)+'</div>'+(csv?'<div style="margin:8px 0">'+(u?'<span class="chip c-w">'+u+' columns need matching</span>':'<span class="chip c-ok">All columns reviewed</span>')+'</div><button class="b p" onclick="event.stopPropagation();openMatch(\''+f.hash+'\')">Match columns '+ic('arrow-right')+'</button>':'')+'</div>';}).join('')||'<p class="note">No files yet.</p>')+'</div></div>';
  return h;}
 function openMatch(h){U.src=h;U.sel='match';U.mtab='match';render();}
+function openFile(h){U.sel='files';U.open=null;U.view=h;render();}
+function fileHashOf(v){const x=String(v||'').trim();if(!x)return null;const fs=wsFiles(U.ws);const f=fs.find(f=>f.hash===x)||fs.find(f=>f.name===x);return f?f.hash:null;}
 /* ---- table ---- */
 function vTable(){const t=TB(U.sel);if(!t){U.sel='ws';return vWs();}
  const tabs=[['data','table','Data'],['fields','list-bullets','Fields'],['prov','git-branch','Where rows came from']];
@@ -322,7 +337,8 @@ function vProv(t){const bySrc={};t.r.forEach(r=>{const k=r.src?r.src.name:'Enter
 function vFiles(){const fl=wsFiles(U.ws);
  let h=crumb(ic('archive')+' Files')+'<h1>Files</h1><p class="sub">A plain bucket. Any file of any kind goes in as it is, named by its fingerprint, then gets read as far as it can be. Below it, Proteus renders virtual files on demand from the log. Those are never stored.</p>';
  h+='<div class="drop" id="drop">'+ic('upload-simple')+' Drop files here or <label style="color:var(--blue);cursor:pointer;text-decoration:underline">choose files<input id="fi" type="file" multiple style="display:none"></label><div class="note" id="dmsg" style="margin-top:6px">'+esc(U.drop||'Bytes stay in this page in the demo. In the real build they go to the device\'s private file storage under the same fingerprint.')+'</div></div>';
- h+='<div class="gt">REAL FILES IN THIS BUCKET ('+fl.length+')</div>'+(fl.length?'<div class="wrap"><table><thead><tr><th>Name</th><th>Size</th><th>Reading</th><th>Fingerprint (SHA-256)</th><th></th></tr></thead><tbody>'+fl.map(f=>{const csv=/csv/.test(f.type)||/\.csv$/i.test(f.name);return '<tr><td>'+ic(iconFor((READS(f.hash).slice(-1)[0]||{}).kind||(csv?'csv':'binary')))+' '+esc(f.name)+(f.derived?' <span class="chip c-p">'+ic('magic-wand')+' kept copy</span>':'')+'</td><td>'+fmtSize(f.size)+'</td><td>'+readCard(f)+'</td><td><span class="tag">'+esc(f.hash.slice(0,12))+'…</span></td><td style="text-align:right"><button class="b" onclick="U.open=\''+f.hash+'\';render()">'+ic('eye')+' Reading</button> '+(csv?'<button class="b" onclick="openMatch(\''+f.hash+'\')">'+ic('arrows-left-right')+' Match to tables</button> ':'')+'<button class="b g" onclick="act(\'retract\',{of:\''+f.eid+'\'})">'+ic('trash')+'</button></td></tr>';}).join('')+'</tbody></table></div>':'<p class="note">Empty. Drop a file to begin.</p>');
+ h+='<div class="gt">REAL FILES IN THIS BUCKET ('+fl.length+')</div>'+(fl.length?'<div class="files">'+fl.map(f=>{const csv=/csv/.test(f.type)||/\.csv$/i.test(f.name);const k=(READS(f.hash).slice(-1)[0]||{}).kind||(csv?'csv':'binary');return '<div class="fcard" onclick="U.view=\''+f.hash+'\';render()"><div class="fic">'+ic(iconFor(k))+'</div><div class="fn">'+esc(f.name)+(f.derived?' <span class="chip c-p">'+ic('magic-wand')+'</span>':'')+'</div><div class="fm">'+fmtSize(f.size)+'</div><div class="fa" onclick="event.stopPropagation()"><button class="b" title="View" onclick="U.view=\''+f.hash+'\';render()">'+ic('eye')+'</button><button class="b" title="Reading" onclick="U.open=\''+f.hash+'\';render()">'+ic('file-text')+'</button>'+(csv?'<button class="b" title="Match columns" onclick="openMatch(\''+f.hash+'\')">'+ic('arrows-left-right')+'</button>':'')+'<button class="b g" title="Remove" onclick="act(\'retract\',{of:\''+f.eid+'\'})">'+ic('trash')+'</button></div></div>';}).join('')+'</div>':'<p class="note">Empty. Drop a file to begin.</p>');
+ if(U.view)h+=vFileView(U.view);
  if(U.open)h+=vReading(U.open);
  h+=vCoverage();
  h+='<div class="gt">VIRTUAL FILES (rendered on demand by Proteus from log entry #'+(head()?head().seq:0)+')</div><div class="wrap vf"><table><tbody>'+virtList().map(v=>'<tr><td>'+ic(v.i)+' '+esc(v.name)+' <span class="chip c-p">'+ic('magic-wand')+' virtual</span></td><td class="note">'+esc(v.d)+'</td><td style="text-align:right"><button class="b" onclick="U.virt=\''+v.key+'\';render()">Render</button></td></tr>').join('')+'</tbody></table></div>';
@@ -335,7 +351,7 @@ async function take(list){let dup=0,added=0;for(const f of list){const bytes=new
 function virtList(){const out=[];const ws=U.ws;
  for(const t of wsTables(ws)){out.push({key:'csv:'+t.id,name:t.name.toLowerCase().replace(/\W+/g,'-')+'.csv',i:'file-csv',d:'Table as spreadsheet, formulas evaluated'});out.push({key:'json:'+t.id,name:t.name.toLowerCase().replace(/\W+/g,'-')+'.json',i:'file-code',d:'Table as JSON, standard terms as keys'});}
  for(const f of wsFiles(ws)){if(D.maps[f.hash])out.push({key:'sssom:'+f.hash,name:f.name.replace(/\.csv$/i,'')+'.sssom.tsv',i:'file-text',d:'Mapping decisions in the SSSOM table format'});}
- out.push(...virtIngest(ws));out.push(...virtDocs(ws));out.push({key:'md:'+ws,name:'workspace-summary.md',i:'file-text',d:'Readable summary of this workspace'});out.push({key:'log:'+ws,name:'pharos-log.jsonl',i:'scroll',d:'The raw signed log, one entry per line'});return out;}
+ out.push(...virtIngest(ws));out.push(...virtDocs(ws));out.push({key:'md:'+ws,name:'workspace-summary.md',i:'file-text',d:'Readable summary of this workspace'});out.push({key:'log:'+ws,name:'activity-log.jsonl',i:'scroll',d:'The raw signed log, one entry per line'});return out;}
 function renderVirtual(v){const [k,id]=v.key.split(':');
  if(k==='csv'){const t=TB(id),vals=computeTable(t);return toCsv([t.f.map(f=>f.n)].concat(vals.map(r=>r.map(x=>x==null?'':typeof x==='object'?'#ERROR':x))));}
  if(k==='json'){const t=TB(id),vals=computeTable(t);return JSON.stringify(vals.map(r=>Object.fromEntries(t.f.map((f,i)=>[f.m||f.n,r[i]==null?null:typeof r[i]==='object'?'#ERROR':r[i]]))),null,2);}
@@ -344,7 +360,7 @@ function renderVirtual(v){const [k,id]=v.key.split(':');
   for(const c of Object.keys(m)){const e=m[c];if(e.status!=='confirmed')continue;rows.push([c,P[e.rel]||'skos:relatedMatch',e.term,e.c==null?'':e.c,/^You/.test(e.by)?'curator:you':'tool:'+e.by.replace(/\W+/g,'-').toLowerCase(),/^You/.test(e.by)?'semapv:ManualMappingCuration':/Shape/.test(e.by)?'semapv:LexicalMatching':'semapv:UnspecifiedMatching','log entry '+e.eid.slice(0,10)]);}
   for(const c of Object.keys(m)){const e=m[c];if(e.status==='nomatch')rows.push([c,'sssom:NoTermFound','','',  'curator:you','semapv:ManualMappingCuration','reviewed, no match']);}
   return rows.map(r=>r.join('\t')).join('\n');}
- if(k==='md'){const w=D.ws.find(x=>x.id===id);return '# '+w.name+'\n\nFolded from pharos log entry #'+head().seq+'.\n\n## Tables\n'+wsTables(id).map(t=>'- '+t.name+': '+t.f.length+' fields, '+t.r.length+' rows'+(t.std?' (follows '+t.std+')':'')).join('\n')+'\n\n## Files\n'+(wsFiles(id).map(f=>'- '+f.name+' ('+fmtSize(f.size)+', '+f.hash.slice(0,12)+')').join('\n')||'- none');}
+ if(k==='md'){const w=D.ws.find(x=>x.id===id);return '# '+w.name+'\n\nFolded from log entry #'+head().seq+'.\n\n## Tables\n'+wsTables(id).map(t=>'- '+t.name+': '+t.f.length+' fields, '+t.r.length+' rows'+(t.std?' (follows '+t.std+')':'')).join('\n')+'\n\n## Files\n'+(wsFiles(id).map(f=>'- '+f.name+' ('+fmtSize(f.size)+', '+f.hash.slice(0,12)+')').join('\n')||'- none');}
   if(k==='reading'||k==='text'||k==='coverage')return renderIngest(k,id);
  if(/^doc(md|html|txt)$/.test(k))return renderDoc(k,id);
  if(k==='log')return LOG.map(e=>JSON.stringify({id:e.id,writer:e.writer,seq:e.seq,prev:e.prev,op:e.op,body:e.body,ts:e.ts,sig:e.sig})).join('\n');return '';}
@@ -404,7 +420,7 @@ async function land(){const src=U.src,s=srcOf(src),f=D.files.find(x=>x.hash===sr
  D=fold();U.msg='Landed '+total+' rows across '+Object.keys(groups).join(' and ')+(old.size?', replacing the earlier landing of this file':'')+'. Each batch records its source file and mapping.';render();}
 function vHistory(src){const k=U.tt==null?null:U.tt;const ml=D.mapLog.filter(e=>e.src===src);const s=srcOf(src);
  const last={};ml.forEach(e=>last[e.col]=e.n);
- return '<div class="row"><div class="grow"><h2>Every decision, in order</h2><p class="sub">Entries are never edited. Changing a match adds a new entry on top.</p>'+(ml.length?'':'<p class="note">No decisions yet.</p>')+'<div class="log">'+ml.slice().reverse().map(e=>{const sup=e.status==='superseded'||last[e.col]!==e.n;return '<div class="ent '+(sup?'sup':'')+'"><div><b>#'+e.n+'</b> <span class="tag">'+esc(e.col)+'</span> '+chip(e)+(e.term&&e.status==='confirmed'?' '+ic('arrow-right')+' '+lbl(e.term)+' <span class="chip c-n">'+e.rel+'</span>':'')+'</div><div class="t">'+esc(new Date(e.ts).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}))+' · by '+esc(e.by)+(e.c!=null?' · confidence '+Math.round(e.c*100)+'%':'')+(e.note?' · '+esc(e.note):'')+' · signed, in the pharos log</div></div>';}).join('')+'</div></div><div class="grow"><h2>Replay the mapping</h2><p class="sub">Slide to see the file as it read after any earlier decision.</p>'+(ml.length?'<input type="range" min="0" max="'+ml.length+'" value="'+(U.rp==null?ml.length:U.rp)+'" oninput="U.rp=+this.value;render()">':'')+'<div class="note" style="margin:6px 0 10px">'+(U.rp==null||U.rp===ml.length?'Now':'After decision '+U.rp+' of '+ml.length)+'</div>'+ptable(src,U.rp==null||U.rp>=ml.length?null:(U.rp===0?-1:ml[U.rp-1].n))+'</div></div>';}
+ return '<div class="row"><div class="grow"><h2>Every decision, in order</h2><p class="sub">Entries are never edited. Changing a match adds a new entry on top.</p>'+(ml.length?'':'<p class="note">No decisions yet.</p>')+'<div class="log">'+ml.slice().reverse().map(e=>{const sup=e.status==='superseded'||last[e.col]!==e.n;return '<div class="ent '+(sup?'sup':'')+'"><div><b>#'+e.n+'</b> <span class="tag">'+esc(e.col)+'</span> '+chip(e)+(e.term&&e.status==='confirmed'?' '+ic('arrow-right')+' '+lbl(e.term)+' <span class="chip c-n">'+e.rel+'</span>':'')+'</div><div class="t">'+esc(new Date(e.ts).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}))+' · by '+esc(e.by)+(e.c!=null?' · confidence '+Math.round(e.c*100)+'%':'')+(e.note?' · '+esc(e.note):'')+' · signed, in the log</div></div>';}).join('')+'</div></div><div class="grow"><h2>Replay the mapping</h2><p class="sub">Slide to see the file as it read after any earlier decision.</p>'+(ml.length?'<input type="range" min="0" max="'+ml.length+'" value="'+(U.rp==null?ml.length:U.rp)+'" oninput="U.rp=+this.value;render()">':'')+'<div class="note" style="margin:6px 0 10px">'+(U.rp==null||U.rp===ml.length?'Now':'After decision '+U.rp+' of '+ml.length)+'</div>'+ptable(src,U.rp==null||U.rp>=ml.length?null:(U.rp===0?-1:ml[U.rp-1].n))+'</div></div>';}
 function vDrift(){const done=U.driftDone;let h='<h2>A new copy of the file arrived</h2><p class="sub">Next month\'s export from the same source. Structure and meaning are checked against what was confirmed.</p>';
  if(!U.driftOn)return h+'<div class="card"><p>Last matched: <b>metro-contracts.csv</b>. Check the newest export for changes.</p><button class="b p" onclick="U.driftOn=true;render()">'+ic('arrows-clockwise')+' Check metro-contracts-december.csv</button></div>';
  return h+'<div class="alert">'+ic('warning')+' <b>2 changes found.</b> Existing matches pause for the affected columns until reviewed.</div><div class="row"><div class="grow"><div class="card" style="margin-bottom:12px"><h2>'+ic('plus-circle')+' Structure: a new column</h2><p class="sub">Column <span class="tag">award_end</span> was not in the earlier file.</p><div class="samples">2027-03-31 , 2027-06-30 , 2026-12-31</div>'+(done?'<span class="chip c-ok">Recorded in the log as a local term</span>':'<div class="acts" style="margin:0"><button class="b p" onclick="driftOk()">'+ic('check')+' Add as a Date field</button><button class="b" onclick="driftOk()">Keep as local term</button></div>')+'</div><div class="card"><h2>'+ic('seal-warning')+' Meaning: values changed shape</h2><p class="sub"><span class="tag">amt</span> is confirmed as Award amount. The new values look about 1,000 times smaller.</p><div class="samples">Before: 1,240,000 , 2,980,500 &nbsp;→&nbsp; <span class="hl">Now: 1,240 , 2,980.5</span></div>'+(done?'<span class="chip c-ok">Reviewed: values are in thousands</span>':'<p class="note">A column keeping its name while its meaning moves is not caught by structure checks.</p><div class="acts" style="margin:0"><button class="b p" onclick="driftOk()">Values are now in thousands</button><button class="b" onclick="driftOk()">Data error, flag the source</button></div>')+'</div></div><div class="grow"><h2>Why this matters</h2><p class="sub">Without this check, December totals would look 1,000 times smaller than November while the match from amt to Award amount still showed as confirmed.</p></div></div>';}
@@ -415,8 +431,8 @@ function sumE(e){const b=e.body;const at=id=>{const i=LOG.findIndex(x=>x.id===id
   case 'row+':return 'Row added';case 'rows+':return b.rows.length+' rows'+(b.src?' from '+b.src.name:'');case 'cell=':return 'Cell set to "'+String(b.v).slice(0,24)+'"';case 'file+':return 'File "'+b.name+'"'+(b.derived?' (kept copy of virtual file)':'');
   case 'doc+':return (b.kind==='note'?'Note':'Document')+' "'+b.title+'"';case 'doc=':return b.font?'Font set to '+b.font:'Renamed to "'+b.title+'"';case 'blk+':return 'New paragraph';case 'cmt+':return b.parent?'Reply to a comment':'Comment added';case 'cmt=':return b.resolved?'Comment resolved':'Comment reopened';case 'share+':return 'Shared with '+b.who+' ('+b.role+')';case 'blk=':return b.done!=null?'To-do '+(b.done?'checked':'unchecked'):b.t?'Paragraph set to '+(BT[b.t]||b.t):'Paragraph edited';case 'voice+':return 'Voice note attached';case 'read':return 'Read "'+((D.files.find(f=>f.hash===b.hash)||{}).name||b.hash.slice(0,8))+'" as '+b.kind+' ('+b.tier+')';case 'map':return b.col+' → '+(b.term||b.status)+' ['+b.status+']';case 'retract':return 'Retracts '+at(b.of);default:return e.op;}}
 function vLog(){const k=U.tt==null?LOG.length:U.tt,S=fold(k);
- let h='<div class="crumb">'+ic('hard-drives')+' Your database '+ic('caret-right')+' '+ic('scroll')+' Pharos log</div><h1>Pharos log</h1><p class="sub">This list and the file bytes are the whole database. Workspaces, tables, fields, rows, mappings and virtual files are all folded from it.</p>';
- h+='<div class="row"><div class="grow"><div class="card"><div class="fh"><b>'+ic('key')+' This device\'s key</b><span class="chip '+(ENGINE.report().unsigned?'c-w':'c-ok')+'">'+(ENGINE.report().unsigned?ENGINE.report().unsigned+' signing':ic('shield-check')+' all signed')+'</span></div><div class="note" style="margin-top:6px">Writer <span class="tag">'+esc(ENGINE.writer)+'</span>, Ed25519 through a device-key grant. Every entry is a pharos entry (content-addressed, SHA-256), signed, and saved encrypted on this device ('+esc(ENGINE.report().backend)+'). Another tab sees your changes live; a cell edited in two places at once keeps both edits in the log.</div></div>';
+ let h='<div class="crumb">'+ic('hard-drives')+' Your database '+ic('caret-right')+' '+ic('scroll')+' Activity log</div><h1>Activity log</h1><p class="sub">This list and the file bytes are the whole database. Workspaces, tables, fields, rows, mappings and virtual files are all folded from it.</p>';
+ h+='<div class="row"><div class="grow"><div class="card"><div class="fh"><b>'+ic('key')+' This device\'s key</b><span class="chip '+(ENGINE.report().unsigned?'c-w':'c-ok')+'">'+(ENGINE.report().unsigned?ENGINE.report().unsigned+' signing':ic('shield-check')+' all signed')+'</span></div><div class="note" style="margin-top:6px">Writer <span class="tag">'+esc(ENGINE.writer)+'</span>, Ed25519 through a device-key grant. Every entry is content-addressed (SHA-256), signed, and saved encrypted on this device ('+esc(ENGINE.report().backend)+'). Another tab sees your changes live; a cell edited in two places at once keeps both edits in the log.</div></div>';
  h+=vShare();h+='<div class="gt">TIME TRAVEL</div><div class="card"><input type="range" min="0" max="'+LOG.length+'" value="'+k+'" oninput="U.tt=+this.value===LOG.length?null:+this.value;render()"><div class="note" style="margin:6px 0">'+(k===LOG.length?'Now, entry #'+k:'Folded up to entry #'+k+' of '+LOG.length)+'</div><div class="fh"><span class="chip c-n">'+S.ws.length+' workspaces</span><span class="chip c-n">'+S.tb.length+' tables</span><span class="chip c-n">'+S.tb.reduce((a,t)=>a+t.r.length,0)+' rows</span><span class="chip c-n">'+S.files.length+' files</span><span class="chip c-n">'+Object.values(S.maps).reduce((a,m)=>a+Object.keys(m).length,0)+' column decisions</span></div></div></div>';
  h+='<div class="grow"><div class="gt">ENTRIES (newest first)</div><div class="wrap" style="max-height:560px"><table><thead><tr><th>#</th><th>Entry</th><th>Id</th><th></th></tr></thead><tbody>'+LOG.slice().reverse().slice(0,80).map(e=>'<tr style="'+(e.seq>k?'opacity:.35':'')+'"><td>'+e.seq+'</td><td>'+esc(sumE(e))+'</td><td><span class="tag">'+e.id.slice(0,8)+'</span></td><td>'+(e.ok?'<span class="ok" title="signature verified">'+ic('signature')+'</span>':'<span class="note">unsigned</span>')+'</td></tr>').join('')+'</tbody></table></div></div></div>';
  return h;}
@@ -562,6 +578,16 @@ function iconFor(k){return /^(png|jpeg|gif|bmp|webp|tiff|ico|svg|psd)$/.test(k)?
 function readCard(f){const rs=READS(f.hash);if(!rs.length)return '<span class="chip c-w">'+ic('hourglass')+' Not read yet</span>';const r=rs[rs.length-1];
  return tierChip(r.tier)+' <span class="tag">'+esc(r.kind)+'</span>'+r.flags.map(x=>' <span class="chip c-w">'+ic('warning')+' '+esc(FLAGN[x]||x)+'</span>').join('');}
 async function readAgain(hash){const f=wsFiles(U.ws).find(x=>x.hash===hash);if(!f)return;const last=READS(hash).slice(-1)[0];await ingest(f,{raw:!last||last.frame.normalize});D=fold();U.open=hash;render();}
+function vFileView(hash){const f=wsFiles(U.ws).find(x=>x.hash===hash);if(!f)return '';const b=BLOBS.get(hash);if(!b)return '<div class="card" style="margin-top:12px"><p class="note">No bytes stored for this file.</p></div>';
+ const url=URL.createObjectURL(new Blob([b.bytes],{type:b.type||'application/octet-stream'}));
+ const type=b.type||'';let body='';
+ if(/^image\//.test(type))body='<img src="'+url+'" alt="'+esc(f.name)+'" style="max-width:100%;height:auto;display:block">';
+ else if(/^audio\//.test(type))body='<audio controls src="'+url+'" style="width:100%"></audio>';
+ else if(/^video\//.test(type))body='<video controls src="'+url+'" style="max-width:100%"></video>';
+ else if(type==='application/pdf')body='<embed src="'+url+'" type="application/pdf" width="100%" height="480px">';
+ else if(/^text\//.test(type)||/\.(txt|csv|json|md|js|html|xml|log|tsv)$/i.test(f.name)){try{body='<pre class="view" style="max-height:480px;white-space:pre-wrap;overflow:auto">'+esc(new TextDecoder().decode(b.bytes))+'</pre>';}catch(e){body='<p class="note">Could not decode as text.</p>';}}
+ else body='<p class="note">No inline preview for this type.</p><p><a href="'+url+'" download="'+esc(f.name)+'">Download '+esc(f.name)+'</a></p>';
+ return '<div class="card" style="margin-top:12px"><div class="fh"><b>'+ic('eye')+' '+esc(f.name)+'</b><span class="note" style="margin-left:8px">'+esc(type||'unknown type')+' · '+fmtSize(f.size)+'</span><div class="acts"><button class="b g" onclick="U.view=null;render()">'+ic('x')+'</button></div></div>'+body+'</div>';}
 function vReading(hash){const f=wsFiles(U.ws).find(x=>x.hash===hash);if(!f)return '';const rs=READS(hash);
  let h='<div class="card" style="margin-top:12px"><div class="fh"><b>'+ic(iconFor(rs.length?rs[rs.length-1].kind:'binary'))+' '+esc(f.name)+'</b>'+(rs.length?tierChip(rs[rs.length-1].tier):'')+'<div class="acts"><button class="b" onclick="readAgain(\''+hash+'\')">'+ic('arrows-clockwise')+' Read again with the other setting</button><button class="b g" onclick="U.open=null;render()">'+ic('x')+'</button></div></div>';
  if(!rs.length)return h+'<p class="note">No reading yet.</p></div>';
@@ -713,7 +739,7 @@ async function boot(){ENGINE=await new Promise(r=>{(function w(){window.__ENGINE
  if(!LOG.length&&ENGINE.role==='solo')await seed();else{SEED_HASH=await sha(enc.encode(SEED_CSV));D=fold();}
  if(ENGINE.role==='founder'){try{U.shareLink=location.origin+location.pathname+'#join='+await ENGINE.share();}catch(e){}}
  ENGINE.onChange(()=>{refreshLog();D=fold();render();storebar();});ENGINE.onStatus(()=>{refreshLog();storebar();});storebar();}
-const DEFAULT_ROUTES=window.EODB_ROUTES||['relay:'+location.protocol+'//'+(location.hostname||'127.0.0.1')+':8853'];
+const DEFAULT_ROUTES=window.EODB_ROUTES||['relay:'+location.origin,'relay:'+location.protocol+'//'+(location.hostname||'127.0.0.1')+':8853'];
 function vShare(){const r=ENGINE.report().share;const up=r&&r.routesUp>0;const conn=r?'<span class="chip '+(up?'c-ok':'c-w')+'">'+(up?'connected':'reconnecting…')+'</span>':'';
  let h='<div class="gt">SHARING</div><div class="card">';
  if(ENGINE.role==='guest')h+='<div class="fh"><b>'+ic('users-three')+' You joined a shared space</b>'+conn+'</div><div class="note" style="margin-top:6px">What you change reaches everyone in the space, and what they change arrives here. '+ENGINE.peers().length+' device'+(ENGINE.peers().length===1?'':'s')+' so far.</div>';
@@ -723,8 +749,21 @@ function vShare(){const r=ENGINE.report().share;const up=r&&r.routesUp>0;const c
  else h+='<div class="fh"><b>'+ic('users-three')+' Share this space</b></div><div class="note" style="margin:6px 0">Make a link. Anyone you give it to can open this space on their own device, see everything and add to it. Everything is encrypted before it leaves this device.</div><button class="b p" onclick="shareSpace()">Create a share link</button>';
  return h+'</div>';}
 async function shareSpace(){const l=await ENGINE.share({routes:DEFAULT_ROUTES});U.shareLink=location.origin+location.pathname+'#join='+l;render();storebar();}
-async function stopSharing(){await ENGINE.unshare();U.shareLink=null;render();}
+async function stopSharing(){await ENGINE.unshare();U.shareLink=null;U.qr=false;render();}
 function copyLink(){try{navigator.clipboard.writeText(U.shareLink);}catch(e){}}
+async function showSignIn(){const l=await ENGINE.share({routes:DEFAULT_ROUTES});U.shareLink=location.origin+location.pathname+'#join='+l;U.qr=true;render();storebar();}
+let QR_CACHE=null,QR_FOR=null;async function drawQr(){if(!U.qr)return;const img=document.getElementById('qrimg');if(!img||!window.QRCodeLib)return;
+ if(QR_FOR===U.shareLink&&QR_CACHE){if(img.src!==QR_CACHE)img.src=QR_CACHE;return;}
+ try{QR_CACHE=await QRCodeLib.toDataURL(U.shareLink,{margin:4,width:720,errorCorrectionLevel:'M'});QR_FOR=U.shareLink;img.src=QR_CACHE;}catch(e){}}
+function vProfile(){const r=ENGINE.report(),role=ENGINE.role,peers=ENGINE.peers();
+ let h=crumb(ic('user')+' Profile')+'<h1>Profile</h1>';
+ h+='<div class="gt">THIS DEVICE</div><div class="card"><div class="fh"><b>'+ic('key')+' '+esc(ENGINE.writer)+'</b>'+(r.unsigned?'<span class="chip c-w">'+r.unsigned+' signing</span>':'<span class="chip c-ok">'+ic('shield-check')+' all signed</span>')+'</div><div class="note" style="margin-top:6px">Signed with Ed25519 through a device-key grant. Stored encrypted on '+esc(r.backend)+'.</div></div>';
+ h+='<div class="gt">DEVICES</div><div class="card"><div class="note">'+peers.length+' device'+(peers.length===1?'':'s')+' so far in this space.</div></div>';
+ h+='<div class="gt">SIGN IN WITH ANOTHER DEVICE</div><div class="card">';
+ if(role==='guest')h+='<div class="note">You joined this space. Ask whoever shared it with you for their sign-in code, and open the link it points to.</div>';
+ else if(U.qr)h+='<div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap"><img id="qrimg" alt="Sign-in code" style="width:300px;height:300px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:8px"><div style="flex:1;min-width:260px"><div class="note">Point your other device\'s camera at the code, or open this link there:</div><input readonly style="width:100%;margin-top:8px" value="'+esc(U.shareLink)+'" onclick="this.select()"><div class="fh" style="margin-top:8px"><button class="b p" onclick="copyLink()">Copy link</button><button class="b" onclick="stopSharing()">Stop sharing</button></div></div></div>';
+ else h+='<div class="note" style="margin:0 0 10px">Show a code you can scan with another device to open this space there. Everything is encrypted before it leaves this device.</div><button class="b p" onclick="showSignIn()">'+ic('link')+' Show sign-in code</button>';
+ h+='</div>';return h;}
 function storebar(){let b=document.getElementById('storebar');if(!b){b=document.createElement('div');b.id='storebar';document.body.appendChild(b);}const r=ENGINE.report();const bad=r.lastError||r.damaged||r.gaps;
  const sh=r.share?(r.share.routesUp?' · shared, connected':' · shared, reconnecting…'):'';b.className=bad?'bad':'';b.textContent=bad?'Not saved: '+(r.lastError||(r.damaged+' damaged, '+r.gaps+' missing'))+' ('+r.unpersisted+' waiting)':(r.unpersisted?'Saving…':'Saved on this device, encrypted')+' · '+r.backend+sh+' · '+r.entries+' entries';}
 (async()=>{await boot();render();storebar();setInterval(storebar,1000);})();
