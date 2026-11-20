@@ -1,0 +1,8 @@
+# NOT FROZEN. Author labels, scorer and rater sheets are still to be written; re-hash everything at freeze.
+5e594299ec9092e557bea4dd89a92e13b3819d49cbf404b39846dab7c7fd361d  items-raters.json
+f239b1c88d2ac05f57d7343ab99a241281903babba4f9d2c9ff3ab573782b7cd  idmap.json
+b1b3ec85ac2ea0c7ba937f2b261687aaf901722d28558e0706b99a3620e1819e  ideas.json
+89df29470462360d8d6b0f4fd5901d9804890c321c434464591f347e08dcc2b0  key-c.json
+449a6a2d454ff20cd0321831fd2eae2253b59326280db53b11f4614b5f49f926  items-D.json
+5eaa41f76c0a024bddee70278c46f6dfe67008df31b3b12bc0b1256fd03080a9  source/items-ab.json
+e224067cada230d6c0db9985eb0e63f58a9b67a42104c31aae2e03df1076b8a9  source/items-c.json

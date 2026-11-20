@@ -1,0 +1,458 @@
+[
+ {
+  "id": "A-01",
+  "set": "A",
+  "idea": "permission-rule",
+  "text": "The school office writes a rule saying that only teachers may edit the grades spreadsheet, while parents may only read the Term Reports page."
+ },
+ {
+  "id": "A-02",
+  "set": "A",
+  "idea": "permission-rule",
+  "text": "Priya's team sets a rule that interns can add photos to the Launch Party album but cannot delete anything in it."
+ },
+ {
+  "id": "A-03",
+  "set": "A",
+  "idea": "grant-or-pass-on",
+  "text": "Omar lets his sister's tablet add new entries to the family recipe book."
+ },
+ {
+  "id": "A-04",
+  "set": "A",
+  "idea": "grant-or-pass-on",
+  "text": "Dana, who can approve expenses, hands that same approval right to her colleague Luis while she is on holiday."
+ },
+ {
+  "id": "A-05",
+  "set": "A",
+  "idea": "take-back",
+  "text": "After the contract ended, Helen stops the freelancer's laptop from being able to open the project plan."
+ },
+ {
+  "id": "A-06",
+  "set": "A",
+  "idea": "take-back",
+  "text": "Marcus cancels the editing access he had given his old phone, just before he sells it."
+ },
+ {
+  "id": "A-07",
+  "set": "A",
+  "idea": "whose-rules",
+  "text": "Before asking who can see the garden club's budget, Tomas states that he is using the treasurer's rules and her secret keys, so his answer can be put next to the chairman's answer."
+ },
+ {
+  "id": "A-08",
+  "set": "A",
+  "idea": "whose-rules",
+  "text": "Nia asks her laptop which files her landlord can open, saying she is using the landlord's rules and secret keys, so the answer can be compared with what the landlord's tablet says."
+ },
+ {
+  "id": "A-09",
+  "set": "A",
+  "idea": "disagreement",
+  "text": "Ravi sees that his rule lets Grace edit the volunteer rota while Grace's own rule says he cannot, and he writes a note that the two rules disagree."
+ },
+ {
+  "id": "A-10",
+  "set": "A",
+  "idea": "disagreement",
+  "text": "The two co-owners of a bike shop find that one of their rules lets the cashier see daily sales totals and the other forbids it, so the manager writes down that they clash."
+ },
+ {
+  "id": "A-11",
+  "set": "A",
+  "idea": "resolve-disagreement",
+  "text": "Two cousins had written down clashing rules about who may edit the holiday itinerary, so they combine both versions into one rule and close the note about the clash."
+ },
+ {
+  "id": "A-12",
+  "set": "A",
+  "idea": "resolve-disagreement",
+  "text": "The club secretary changes the membership rule so it no longer clashes with the treasurer's rule, and marks the written-down disagreement as finished."
+ },
+ {
+  "id": "A-13",
+  "set": "A",
+  "idea": "remove-content",
+  "text": "Selena, who owns the diary file, wipes out the text of her 2019 entry so that nobody can read it any more."
+ },
+ {
+  "id": "A-14",
+  "set": "A",
+  "idea": "remove-content",
+  "text": "Kofi erases everything inside the draft contract he created, so even his business partner can no longer read it."
+ },
+ {
+  "id": "A-15",
+  "set": "A",
+  "idea": "leave-a-marker",
+  "text": "When Ines deleted the old invoice, she left a short note in its place saying that an invoice used to be there and was deleted."
+ },
+ {
+  "id": "A-16",
+  "set": "A",
+  "idea": "leave-a-marker",
+  "text": "After wiping a photo from the shared album, Jonas leaves a placeholder that says a picture was there and has been deleted."
+ },
+ {
+  "id": "A-17",
+  "set": "A",
+  "idea": "offer-and-confirm",
+  "text": "Wei offers his coworker Elise the final slide deck, and Elise replies that it arrived and that the file was complete and undamaged."
+ },
+ {
+  "id": "A-18",
+  "set": "A",
+  "idea": "offer-and-confirm",
+  "text": "Granddad sends Poppy a scanned letter, and her tablet confirms that it received the letter and that nothing was damaged on the way."
+ },
+ {
+  "id": "A-19",
+  "set": "A",
+  "idea": "same-fingerprint",
+  "text": "The guest list on Mia's phone and the copy on her laptop each work out a short code from the list and compare the two codes to check they reached the same result."
+ },
+ {
+  "id": "A-20",
+  "set": "A",
+  "idea": "same-fingerprint",
+  "text": "Two warehouse computers each produce a short code summing up today's stock count and compare codes to check they agree."
+ },
+ {
+  "id": "A-21",
+  "set": "A",
+  "idea": "locked-box",
+  "text": "Aisha's phone holds a scrambled file from her brother that it cannot open, so the app shows that file as \"not read\" instead of \"empty\"."
+ },
+ {
+  "id": "A-22",
+  "set": "A",
+  "idea": "locked-box",
+  "text": "The accountant's laptop has an encrypted archive of old receipts it has no password for, so the report says \"not read\" for it instead of \"no receipts\"."
+ },
+ {
+  "id": "A-23",
+  "set": "A",
+  "idea": "ask-a-peer",
+  "text": "Leo's phone asks his laptop for just last month's photos and tells it to send no more than 50 megabytes."
+ },
+ {
+  "id": "A-24",
+  "set": "A",
+  "idea": "ask-a-peer",
+  "text": "A shop till asks the back-office computer for the shoe price list, and caps the request at 200 entries."
+ },
+ {
+  "id": "A2-01",
+  "set": "A2",
+  "idea": "announce-interest",
+  "text": "Sam's tablet tells the other devices that it only wants updates from the Kitchen Renovation part of the shared workspace."
+ },
+ {
+  "id": "A2-02",
+  "set": "A2",
+  "idea": "announce-interest",
+  "text": "A reporter's phone announces that it wants to receive only the Sports section of the newsroom's shared workspace."
+ },
+ {
+  "id": "A2-03",
+  "set": "A2",
+  "idea": "record-a-look",
+  "text": "The app notes that Nina's laptop opened the Q3 sales report at 9:15 this morning."
+ },
+ {
+  "id": "A2-04",
+  "set": "A2",
+  "idea": "record-a-look",
+  "text": "The photo album keeps a note that Dad's phone viewed the beach sunset picture."
+ },
+ {
+  "id": "A2-05",
+  "set": "A2",
+  "idea": "track-popularity",
+  "text": "Seeing that recipes are opened far more often than receipts, Kim's phone decides to keep the recipes close by when storage runs low."
+ },
+ {
+  "id": "A2-06",
+  "set": "A2",
+  "idea": "track-popularity",
+  "text": "A school tablet counts which kinds of items get opened most, worksheets or newsletters, so it keeps the worksheets when its memory is short."
+ },
+ {
+  "id": "A2-07",
+  "set": "A2",
+  "idea": "start-a-space",
+  "text": "Carla creates a brand new, empty shared workspace for her book club."
+ },
+ {
+  "id": "A2-08",
+  "set": "A2",
+  "idea": "start-a-space",
+  "text": "The team adds a fresh personal area for new hire Tariq inside the company's shared workspace."
+ },
+ {
+  "id": "A2-09",
+  "set": "A2",
+  "idea": "make-a-group",
+  "text": "Beatriz creates a group called Weekend Volunteers that includes five phones."
+ },
+ {
+  "id": "A2-10",
+  "set": "A2",
+  "idea": "make-a-group",
+  "text": "A clinic administrator installs a ready-made bundle of item types for appointments, patient notes and invoices."
+ },
+ {
+  "id": "A2-11",
+  "set": "A2",
+  "idea": "stop-holding",
+  "text": "Yusuf's phone drops every copy of the Tax 2021 area to free up space, while his other devices keep holding it."
+ },
+ {
+  "id": "A2-12",
+  "set": "A2",
+  "idea": "stop-holding",
+  "text": "The old family laptop stops keeping the Photos area, though the photos stay on everyone else's devices."
+ },
+ {
+  "id": "A2-13",
+  "set": "A2",
+  "idea": "remove-a-whole-branch",
+  "text": "Greta deletes the Old Projects directory and everything inside it in a single step."
+ },
+ {
+  "id": "A2-14",
+  "set": "A2",
+  "idea": "remove-a-whole-branch",
+  "text": "The manager withdraws the access she gave Pete, along with all the access that Pete had passed on to other people."
+ },
+ {
+  "id": "A2-15",
+  "set": "A2",
+  "idea": "inherit-or-same-person",
+  "text": "A new budget file saved in the Finance directory automatically gets the same permissions as the Finance directory."
+ },
+ {
+  "id": "A2-16",
+  "set": "A2",
+  "idea": "inherit-or-same-person",
+  "text": "A work workspace and a gym workspace are declared to contain the same person, Alex Kim."
+ },
+ {
+  "id": "A2-17",
+  "set": "A2",
+  "idea": "work-out-the-chain",
+  "text": "The app works out that Tia can open the invoice because Marco gave access to Lena, who passed it on to Tia."
+ },
+ {
+  "id": "A2-18",
+  "set": "A2",
+  "idea": "work-out-the-chain",
+  "text": "The system works out why the intern can read the minutes: the director gave access to the office, and the office manager passed it to the intern."
+ },
+ {
+  "id": "A2-19",
+  "set": "A2",
+  "idea": "merge-two-spaces",
+  "text": "Two cousins' separate family workspaces are merged into one."
+ },
+ {
+  "id": "A2-20",
+  "set": "A2",
+  "idea": "merge-two-spaces",
+  "text": "After the two bakeries join forces, their separate shared workspaces are combined into a single one."
+ },
+ {
+  "id": "A2-21",
+  "set": "A2",
+  "idea": "merge-two-versions",
+  "text": "Rosa and Ben both edited the meeting agenda while offline, and the app combines their two versions into one agenda."
+ },
+ {
+  "id": "A2-22",
+  "set": "A2",
+  "idea": "merge-two-versions",
+  "text": "Two phones changed the same contact's phone number in different ways, and the app combines them into one entry."
+ },
+ {
+  "id": "A2-23",
+  "set": "A2",
+  "idea": "merge-permission-records",
+  "text": "The laptop and the tablet each hold their own list of who may edit the rota, and the app combines them into one list."
+ },
+ {
+  "id": "A2-24",
+  "set": "A2",
+  "idea": "merge-permission-records",
+  "text": "Two office computers combine their lists of who may open the payroll sheet."
+ },
+ {
+  "id": "A2-25",
+  "set": "A2",
+  "idea": "change-one-secret",
+  "text": "Hana replaces the secret code protecting her medical letter with a new one."
+ },
+ {
+  "id": "A2-26",
+  "set": "A2",
+  "idea": "change-one-secret",
+  "text": "Ivan changes the code that locks the tenancy agreement after he emailed it to the wrong person."
+ },
+ {
+  "id": "A2-27",
+  "set": "A2",
+  "idea": "change-group-secret",
+  "text": "After Dmitri leaves the hiking club, the club replaces the shared secret code for all its files with a new one."
+ },
+ {
+  "id": "A2-28",
+  "set": "A2",
+  "idea": "change-group-secret",
+  "text": "A tutoring group switches over to the updated version of its rule book."
+ },
+ {
+  "id": "B-01",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Maya adds a new customer, Mr. Alvarez, to the customer list."
+ },
+ {
+  "id": "B-02",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Jon checks the total on an invoice against the price list to see whether the two match."
+ },
+ {
+  "id": "B-03",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Priya opens the support case tracker and starts reading the oldest open case."
+ },
+ {
+  "id": "B-04",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Tom merges two duplicate entries for Anna Berg in his contact list into one."
+ },
+ {
+  "id": "B-05",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Lucia splits the task \"Groceries and hardware store\" into two separate tasks."
+ },
+ {
+  "id": "B-06",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Felix changes the shared photo album from showing the newest pictures first to showing them in the order they were taken."
+ },
+ {
+  "id": "B-07",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Chloe links the receipt photo to the March expenses entry."
+ },
+ {
+  "id": "B-08",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Dev removes the link between the wedding album and the Smith family page."
+ },
+ {
+  "id": "B-09",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Hannah decides to leave the overdue laundry task alone this week and changes nothing."
+ },
+ {
+  "id": "B-10",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Sara changes the due date on the dentist task from Tuesday to Thursday."
+ },
+ {
+  "id": "B-11",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Ali checks every photo in the family album against the upload size limit."
+ },
+ {
+  "id": "B-12",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Mei writes a new journal entry about her weekend hike."
+ },
+ {
+  "id": "B-13",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Raj marks the plumber case in the tracker as closed."
+ },
+ {
+  "id": "B-14",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Olga uploads twelve pictures from the picnic to the shared holiday album."
+ },
+ {
+  "id": "B-15",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Ben changes the task list so dates show as day then month instead of month then day."
+ },
+ {
+  "id": "B-16",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Kate compares the customer list with the newsletter sign-up sheet to see who is missing."
+ },
+ {
+  "id": "B-17",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Pablo moves the task \"Paint the fence\" from the Garden list to the Weekend list."
+ },
+ {
+  "id": "B-18",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Zoe merges her Work journal and her Personal journal into a single journal."
+ },
+ {
+  "id": "B-19",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Ian splits the big customer list into a separate list for each city."
+ },
+ {
+  "id": "B-20",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Nora decides not to reply to the customer complaint yet and leaves the case waiting on purpose."
+ },
+ {
+  "id": "B-21",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Eli opens the comments on the cake photo in the shared album to see what people wrote."
+ },
+ {
+  "id": "B-22",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Quinn checks that every journal entry has a date, as her template requires."
+ },
+ {
+  "id": "B-23",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Sven attaches the signed form to the case for Mrs. Kim."
+ },
+ {
+  "id": "B-24",
+  "set": "B",
+  "idea": "everyday",
+  "text": "Tess removes the old phone number from Jamal's customer entry."
+ }
+]

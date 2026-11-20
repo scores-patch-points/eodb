@@ -1,0 +1,50 @@
+[
+ {
+  "id": "C-01",
+  "cell": "NUL·Ground"
+ },
+ {
+  "id": "C-02",
+  "cell": "SEG·Ground"
+ },
+ {
+  "id": "C-03",
+  "cell": "CON·Ground"
+ },
+ {
+  "id": "C-04",
+  "cell": "REC·Ground"
+ },
+ {
+  "id": "C-05",
+  "cell": "SIG·Figure"
+ },
+ {
+  "id": "C-06",
+  "cell": "INS·Figure"
+ },
+ {
+  "id": "C-07",
+  "cell": "SYN·Figure"
+ },
+ {
+  "id": "C-08",
+  "cell": "DEF·Figure"
+ },
+ {
+  "id": "C-09",
+  "cell": "NUL·Pattern"
+ },
+ {
+  "id": "C-10",
+  "cell": "CON·Pattern"
+ },
+ {
+  "id": "C-11",
+  "cell": "EVA·Pattern"
+ },
+ {
+  "id": "C-12",
+  "cell": "REC·Pattern"
+ }
+]

@@ -1,0 +1,19 @@
+name: ci
+on: [push, pull_request]
+# The tests need a clone of the pharos repo (PHAROS_SRC), so CI runs only what needs no sibling repo (the same rule slate's CI follows): every source parses.
+# The full suite runs locally: PHAROS_SRC=<pharos clone> DB_STORE=plain|lazy node --test facade/test*.mjs
+jobs:
+  portable:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node: [20, 22]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ matrix.node }}" }
+      - name: every source parses
+        shell: bash
+        run: for f in facade/*.mjs; do node --check "$f"; done

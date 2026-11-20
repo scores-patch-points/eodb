@@ -1,3 +1,15 @@
 node_modules/
-dist/
 .DS_Store
+*.log
+# test scratch
+.test-tmp*/
+facade/.test-tmp*/
+# everything derived is a deletable cache beside a log (see facade/SIG.md): never commit one
+*.sig/
+*.marks/
+*.derived/
+*.keys/
+# downloaded third-party papers stay local; only the index and the notes about them are tracked
+sources/*
+!sources/NOTES.md
+!sources/INDEX.tsv

@@ -1,0 +1,21 @@
+DEF(;
+  bind: {
+    ok: EVA(SEG(sources; kinds: ["attest"]); where: _by = "kernel" AND ok = 1),
+    gs: REC(CON(SEG(sources; kinds: ["grant"]); to: ok; on: l._id = json_get(r._of, "$[0]"); join: "inner");
+            set: {gid: l._id, frm: l._addr, to_: l.to, area_: l.area, expires_: l.expires, parent: json_get(l._of, "$[0]")};
+            pick: ["gid", "frm", "to_", "area_", "expires_", "parent"]),
+    rv: REC(CON(SEG(sources; kinds: ["revoke"]); to: ok; on: l._id = json_get(r._of, "$[0]"); join: "inner");
+            set: {target: json_get(l._of, "$[0]")};
+            pick: ["target"]),
+    live: CON(gs; to: rv; on: l.gid = r.target; join: "anti")
+  };
+  in: DEF(;
+    fix: "v";
+    base: EVA(live; where: frm = "key:" || :root AND expires_ > :now);
+    step: REC(CON(v; to: live;
+                  on: r.frm = "key:" || l.to_ AND r.area_ like l.area_ || "%" AND r.expires_ <= l.expires_ AND r.expires_ > :now;
+                  join: "inner");
+              set: {gid: r.gid, frm: r.frm, to_: r.to_, area_: r.area_, expires_: r.expires_, parent: r.parent};
+              pick: ["gid", "frm", "to_", "area_", "expires_", "parent"]);
+    in: v)
+)

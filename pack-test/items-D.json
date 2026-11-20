@@ -1,0 +1,62 @@
+[
+  {
+    "id": "D-01",
+    "set": "D",
+    "text": "A laptop's operating system computes a short fixed-length fingerprint of a file's bytes."
+  },
+  {
+    "id": "D-02",
+    "set": "D",
+    "text": "A program checks that the digital signature on a downloaded installer matches the publisher's public key."
+  },
+  {
+    "id": "D-03",
+    "set": "D",
+    "text": "A phone scrambles a photo with a secret key before saving it to storage."
+  },
+  {
+    "id": "D-04",
+    "set": "D",
+    "text": "A wireless adapter splits a long message into numbered pieces of at most 1,500 bytes before sending them."
+  },
+  {
+    "id": "D-05",
+    "set": "D",
+    "text": "A company decides which one key will be the starting point of trust for every other key it issues."
+  },
+  {
+    "id": "D-06",
+    "set": "D",
+    "text": "A computer's clock advances by one second."
+  },
+  {
+    "id": "D-07",
+    "set": "D",
+    "text": "A disk controller writes pending bytes from memory onto the physical platter."
+  },
+  {
+    "id": "D-08",
+    "set": "D",
+    "text": "A router resends a packet because no acknowledgement arrived within the timeout."
+  },
+  {
+    "id": "D-09",
+    "set": "D",
+    "text": "A program asks the operating system for 32 unpredictable random bytes."
+  },
+  {
+    "id": "D-10",
+    "set": "D",
+    "text": "A compressor shrinks a text file by replacing repeated phrases with short codes."
+  },
+  {
+    "id": "D-11",
+    "set": "D",
+    "text": "A text editor converts a file from one character encoding to another."
+  },
+  {
+    "id": "D-12",
+    "set": "D",
+    "text": "A processor loads a value from main memory because it was not found in its cache."
+  }
+]

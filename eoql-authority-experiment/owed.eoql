@@ -1,0 +1,10 @@
+DEF(;
+  bind: {
+    items: REC(SEG(sources; kinds: ["item"]);
+               set: {item: _id, bodyc_: bodyc, dead: _retracted};
+               pick: ["item", "bodyc_", "dead"]),
+    gone: REC(SEG(sources; kinds: ["gone"]); set: {item_: json_get(_of, "$[0]")}; pick: ["item_"])
+  };
+  in: REC(CON(EVA(items; where: dead = 1); to: gone; on: l.item = r.item_; join: "anti");
+          set: {bodyc: bodyc_}; pick: ["item", "bodyc"])
+)

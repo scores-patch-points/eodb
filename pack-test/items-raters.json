@@ -1,0 +1,402 @@
+[
+  {
+    "id": "Q001",
+    "text": "The manager withdraws the access she gave Pete, along with all the access that Pete had passed on to other people."
+  },
+  {
+    "id": "Q002",
+    "text": "The team adds a fresh personal area for new hire Tariq inside the company's shared workspace."
+  },
+  {
+    "id": "Q003",
+    "text": "Quinn checks that every journal entry has a date, as her template requires."
+  },
+  {
+    "id": "Q004",
+    "text": "Ali checks every photo in the family album against the upload size limit."
+  },
+  {
+    "id": "Q005",
+    "text": "Two cousins had written down clashing rules about who may edit the holiday itinerary, so they combine both versions into one rule and close the note about the clash."
+  },
+  {
+    "id": "Q006",
+    "text": "Lena mixes flour, water and yeast on Sunday morning and bakes a round loaf, which sits cooling on the kitchen rack."
+  },
+  {
+    "id": "Q007",
+    "text": "After Dmitri leaves the hiking club, the club replaces the shared secret code for all its files with a new one."
+  },
+  {
+    "id": "Q008",
+    "text": "After wiping a photo from the shared album, Jonas leaves a placeholder that says a picture was there and has been deleted."
+  },
+  {
+    "id": "Q009",
+    "text": "A processor loads a value from main memory because it was not found in its cache."
+  },
+  {
+    "id": "Q010",
+    "text": "Chloe links the receipt photo to the March expenses entry."
+  },
+  {
+    "id": "Q011",
+    "text": "Priya's team sets a rule that interns can add photos to the Launch Party album but cannot delete anything in it."
+  },
+  {
+    "id": "Q012",
+    "text": "A clinic administrator installs a ready-made bundle of item types for appointments, patient notes and invoices."
+  },
+  {
+    "id": "Q013",
+    "text": "A router resends a packet because no acknowledgement arrived within the timeout."
+  },
+  {
+    "id": "Q014",
+    "text": "Aisha's phone holds a scrambled file from her brother that it cannot open, so the app shows that file as \"not read\" instead of \"empty\"."
+  },
+  {
+    "id": "Q015",
+    "text": "A tutoring group switches over to the updated version of its rule book."
+  },
+  {
+    "id": "Q016",
+    "text": "Raj marks the plumber case in the tracker as closed."
+  },
+  {
+    "id": "Q017",
+    "text": "Kate compares the customer list with the newsletter sign-up sheet to see who is missing."
+  },
+  {
+    "id": "Q018",
+    "text": "A computer's clock advances by one second."
+  },
+  {
+    "id": "Q019",
+    "text": "Two cousins' separate family workspaces are merged into one."
+  },
+  {
+    "id": "Q020",
+    "text": "Ravi sees that his rule lets Grace edit the volunteer rota while Grace's own rule says he cannot, and he writes a note that the two rules disagree."
+  },
+  {
+    "id": "Q021",
+    "text": "Ravi clips a label with his name onto his lunchbox so everyone in the canteen can see that this particular box is his."
+  },
+  {
+    "id": "Q022",
+    "text": "Beatriz creates a group called Weekend Volunteers that includes five phones."
+  },
+  {
+    "id": "Q023",
+    "text": "Pablo moves the task \"Paint the fence\" from the Garden list to the Weekend list."
+  },
+  {
+    "id": "Q024",
+    "text": "When Ines deleted the old invoice, she left a short note in its place saying that an invoice used to be there and was deleted."
+  },
+  {
+    "id": "Q025",
+    "text": "Hannah decides to leave the overdue laundry task alone this week and changes nothing."
+  },
+  {
+    "id": "Q026",
+    "text": "Greta deletes the Old Projects directory and everything inside it in a single step."
+  },
+  {
+    "id": "Q027",
+    "text": "Two warehouse computers each produce a short code summing up today's stock count and compare codes to check they agree."
+  },
+  {
+    "id": "Q028",
+    "text": "A shop till asks the back-office computer for the shoe price list, and caps the request at 200 entries."
+  },
+  {
+    "id": "Q029",
+    "text": "A disk controller writes pending bytes from memory onto the physical platter."
+  },
+  {
+    "id": "Q030",
+    "text": "Lucia splits the task \"Groceries and hardware store\" into two separate tasks."
+  },
+  {
+    "id": "Q031",
+    "text": "Yusuf's phone drops every copy of the Tax 2021 area to free up space, while his other devices keep holding it."
+  },
+  {
+    "id": "Q032",
+    "text": "A wireless adapter splits a long message into numbered pieces of at most 1,500 bytes before sending them."
+  },
+  {
+    "id": "Q033",
+    "text": "Carla creates a brand new, empty shared workspace for her book club."
+  },
+  {
+    "id": "Q034",
+    "text": "Olga uploads twelve pictures from the picnic to the shared holiday album."
+  },
+  {
+    "id": "Q035",
+    "text": "Rosa and Ben both edited the meeting agenda while offline, and the app combines their two versions into one agenda."
+  },
+  {
+    "id": "Q036",
+    "text": "Maya hauls the last box out of the garage and stands looking at the bare concrete where the old freezer used to sit, with nothing left in that corner at all."
+  },
+  {
+    "id": "Q037",
+    "text": "Nia asks her laptop which files her landlord can open, saying she is using the landlord's rules and secret keys, so the answer can be compared with what the landlord's tablet says."
+  },
+  {
+    "id": "Q038",
+    "text": "A company decides which one key will be the starting point of trust for every other key it issues."
+  },
+  {
+    "id": "Q039",
+    "text": "Granddad sends Poppy a scanned letter, and her tablet confirms that it received the letter and that nothing was damaged on the way."
+  },
+  {
+    "id": "Q040",
+    "text": "Tom merges two duplicate entries for Anna Berg in his contact list into one."
+  },
+  {
+    "id": "Q041",
+    "text": "Felix changes the shared photo album from showing the newest pictures first to showing them in the order they were taken."
+  },
+  {
+    "id": "Q042",
+    "text": "The system works out why the intern can read the minutes: the director gave access to the office, and the office manager passed it to the intern."
+  },
+  {
+    "id": "Q043",
+    "text": "Sven attaches the signed form to the case for Mrs. Kim."
+  },
+  {
+    "id": "Q044",
+    "text": "Tomas pushes pegs into the allotment lawn and runs string between them, marking out six plots so each neighbour knows which strip is theirs."
+  },
+  {
+    "id": "Q045",
+    "text": "A compressor shrinks a text file by replacing repeated phrases with short codes."
+  },
+  {
+    "id": "Q046",
+    "text": "A new budget file saved in the Finance directory automatically gets the same permissions as the Finance directory."
+  },
+  {
+    "id": "Q047",
+    "text": "A laptop's operating system computes a short fixed-length fingerprint of a file's bytes."
+  },
+  {
+    "id": "Q048",
+    "text": "Nora decides not to reply to the customer complaint yet and leaves the case waiting on purpose."
+  },
+  {
+    "id": "Q049",
+    "text": "Sara changes the due date on the dentist task from Tuesday to Thursday."
+  },
+  {
+    "id": "Q050",
+    "text": "After the contract ended, Helen stops the freelancer's laptop from being able to open the project plan."
+  },
+  {
+    "id": "Q051",
+    "text": "Dana, who can approve expenses, hands that same approval right to her colleague Luis while she is on holiday."
+  },
+  {
+    "id": "Q052",
+    "text": "Leo's phone asks his laptop for just last month's photos and tells it to send no more than 50 megabytes."
+  },
+  {
+    "id": "Q053",
+    "text": "The laptop and the tablet each hold their own list of who may edit the rota, and the app combines them into one list."
+  },
+  {
+    "id": "Q054",
+    "text": "Tess removes the old phone number from Jamal's customer entry."
+  },
+  {
+    "id": "Q055",
+    "text": "Sam's tablet tells the other devices that it only wants updates from the Kitchen Renovation part of the shared workspace."
+  },
+  {
+    "id": "Q056",
+    "text": "A reporter's phone announces that it wants to receive only the Sports section of the newsroom's shared workspace."
+  },
+  {
+    "id": "Q057",
+    "text": "Jon checks the total on an invoice against the price list to see whether the two match."
+  },
+  {
+    "id": "Q058",
+    "text": "A program asks the operating system for 32 unpredictable random bytes."
+  },
+  {
+    "id": "Q059",
+    "text": "A work workspace and a gym workspace are declared to contain the same person, Alex Kim."
+  },
+  {
+    "id": "Q060",
+    "text": "Wei offers his coworker Elise the final slide deck, and Elise replies that it arrived and that the file was complete and undamaged."
+  },
+  {
+    "id": "Q061",
+    "text": "Every Saturday Greta sweeps the gravel paths between the allotment beds and rakes the edges so each bed stays reachable from the gate and from the next one."
+  },
+  {
+    "id": "Q062",
+    "text": "Maya adds a new customer, Mr. Alvarez, to the customer list."
+  },
+  {
+    "id": "Q063",
+    "text": "The club secretary changes the membership rule so it no longer clashes with the treasurer's rule, and marks the written-down disagreement as finished."
+  },
+  {
+    "id": "Q064",
+    "text": "Dev removes the link between the wedding album and the Smith family page."
+  },
+  {
+    "id": "Q065",
+    "text": "Nadia introduces her neighbour Sam to her cousin who needs a plumber, and by evening the two of them have agreed to work together on the bathroom."
+  },
+  {
+    "id": "Q066",
+    "text": "Ian splits the big customer list into a separate list for each city."
+  },
+  {
+    "id": "Q067",
+    "text": "A program checks that the digital signature on a downloaded installer matches the publisher's public key."
+  },
+  {
+    "id": "Q068",
+    "text": "A phone scrambles a photo with a secret key before saving it to storage."
+  },
+  {
+    "id": "Q069",
+    "text": "Kofi erases everything inside the draft contract he created, so even his business partner can no longer read it."
+  },
+  {
+    "id": "Q070",
+    "text": "At the chess club, Ines goes down the sign-up sheet and finds that nobody actually fits the 'junior advanced' group the committee had been planning for, so the group falls away."
+  },
+  {
+    "id": "Q071",
+    "text": "After years of selling set three-course dinners, Marco rewrites his whole restaurant around shared plates, retraining the staff and rewording the menu so guests come to see dinner as a conversation rather than a sequence."
+  },
+  {
+    "id": "Q072",
+    "text": "The guest list on Mia's phone and the copy on her laptop each work out a short code from the list and compare the two codes to check they reached the same result."
+  },
+  {
+    "id": "Q073",
+    "text": "Ivan changes the code that locks the tenancy agreement after he emailed it to the wrong person."
+  },
+  {
+    "id": "Q074",
+    "text": "After a tense staff meeting, Priya dims the cafe lights, puts on soft music and lights candles on every table so the evening starts to feel warm and relaxed again."
+  },
+  {
+    "id": "Q075",
+    "text": "Ben changes the task list so dates show as day then month instead of month then day."
+  },
+  {
+    "id": "Q076",
+    "text": "Eli opens the comments on the cake photo in the shared album to see what people wrote."
+  },
+  {
+    "id": "Q077",
+    "text": "Selena, who owns the diary file, wipes out the text of her 2019 entry so that nobody can read it any more."
+  },
+  {
+    "id": "Q078",
+    "text": "Two phones changed the same contact's phone number in different ways, and the app combines them into one entry."
+  },
+  {
+    "id": "Q079",
+    "text": "The old family laptop stops keeping the Photos area, though the photos stay on everyone else's devices."
+  },
+  {
+    "id": "Q080",
+    "text": "A text editor converts a file from one character encoding to another."
+  },
+  {
+    "id": "Q081",
+    "text": "Hana follows how the rumour about the bakery closing travelled: from the baker's sister to the school gate, then to the bus driver, then to the florist next door."
+  },
+  {
+    "id": "Q082",
+    "text": "Two office computers combine their lists of who may open the payroll sheet."
+  },
+  {
+    "id": "Q083",
+    "text": "Before asking who can see the garden club's budget, Tomas states that he is using the treasurer's rules and her secret keys, so his answer can be put next to the chairman's answer."
+  },
+  {
+    "id": "Q084",
+    "text": "Zoe merges her Work journal and her Personal journal into a single journal."
+  },
+  {
+    "id": "Q085",
+    "text": "A school tablet counts which kinds of items get opened most, worksheets or newsletters, so it keeps the worksheets when its memory is short."
+  },
+  {
+    "id": "Q086",
+    "text": "The school office writes a rule saying that only teachers may edit the grades spreadsheet, while parents may only read the Term Reports page."
+  },
+  {
+    "id": "Q087",
+    "text": "The school board asks whether its habit of ranking pupils by weekly test scores fits with its stated aim of encouraging curiosity, and concludes that the two pull against each other."
+  },
+  {
+    "id": "Q088",
+    "text": "The photo album keeps a note that Dad's phone viewed the beach sunset picture."
+  },
+  {
+    "id": "Q089",
+    "text": "The accountant's laptop has an encrypted archive of old receipts it has no password for, so the report says \"not read\" for it instead of \"no receipts\"."
+  },
+  {
+    "id": "Q090",
+    "text": "Priya opens the support case tracker and starts reading the oldest open case."
+  },
+  {
+    "id": "Q091",
+    "text": "Mei writes a new journal entry about her weekend hike."
+  },
+  {
+    "id": "Q092",
+    "text": "The app works out that Tia can open the invoice because Marco gave access to Lena, who passed it on to Tia."
+  },
+  {
+    "id": "Q093",
+    "text": "Hana replaces the secret code protecting her medical letter with a new one."
+  },
+  {
+    "id": "Q094",
+    "text": "Seeing that recipes are opened far more often than receipts, Kim's phone decides to keep the recipes close by when storage runs low."
+  },
+  {
+    "id": "Q095",
+    "text": "Omar lets his sister's tablet add new entries to the family recipe book."
+  },
+  {
+    "id": "Q096",
+    "text": "Marcus cancels the editing access he had given his old phone, just before he sells it."
+  },
+  {
+    "id": "Q097",
+    "text": "The two co-owners of a bike shop find that one of their rules lets the cashier see daily sales totals and the other forbids it, so the manager writes down that they clash."
+  },
+  {
+    "id": "Q098",
+    "text": "After the two bakeries join forces, their separate shared workspaces are combined into a single one."
+  },
+  {
+    "id": "Q099",
+    "text": "The app notes that Nina's laptop opened the Q3 sales report at 9:15 this morning."
+  },
+  {
+    "id": "Q100",
+    "text": "Mr Okafor tells his class exactly what he means by 'late': arriving after the bell rings, not after the register is taken."
+  }
+]
