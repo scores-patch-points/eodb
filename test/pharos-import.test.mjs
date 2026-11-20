@@ -56,7 +56,8 @@ test('each Matrix sender is its own pharos writer, and the sender, event id and 
   ];
   const d = door(), r = importRoom(d, log);
   assert.deepEqual(r.writers, ['alice-hs.org', 'bob-hs.org']);
-  assert.ok(fs.existsSync(path.join(d.dir, 'alice-hs.org.jsonl')) && fs.existsSync(path.join(d.dir, 'bob-hs.org.jsonl')), 'one file per writer');
+  const stems = fs.readdirSync(d.dir).map((f) => f.replace(/\.(phr|jsonl)$/, ''));   // the pharos core is binary (.phr) on main, JSONL before: either way, one file per writer
+  assert.ok(stems.includes('alice-hs.org') && stems.includes('bob-hs.org'), 'one file per writer');
   const back = exportRoom(d); assert.deepEqual(back.map((e) => e.sender).sort(), ['@alice:hs.org', '@alice:hs.org', '@bob:hs.org']);
   assert.deepEqual(back.map((e) => e.event_id).sort(), log.map((e) => e.event_id).sort());
   assert.equal(fold(back).entities.task_a.title, 'two'); assert.equal(fold(back).entities.task_a._updatedBy, '@alice:hs.org');
