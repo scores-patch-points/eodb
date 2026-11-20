@@ -1,0 +1,12 @@
+name = "eodb"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+account_id = "3b74044548c2c83c1c0ff25be5199268"
+
+[assets]
+directory = "../app"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "eodb"
+database_id = "7bd16bba-a962-4f6c-bf4c-6e5bbd21d025"
