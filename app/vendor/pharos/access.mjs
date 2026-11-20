@@ -13,6 +13,9 @@ import * as core from './core.mjs';
 import { generateKey, keyFromSeed, signBytes, verifyBytes, covers, signIds } from './identity.mjs';
 
 const enc = (s) => new TextEncoder().encode(s);
+// base64url without Buffer, so invite links work in a browser as well as in Node (the format is the same)
+const toB64u = (str) => { const bytes = new TextEncoder().encode(str); let bin = ''; for (const b of bytes) bin += String.fromCharCode(b); return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+const fromB64u = (b64) => { const bin = atob(b64.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((b64.length + 3) % 4)); return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0))); };
 const arr = (x) => (Array.isArray(x) ? x : [x]);
 const RIGHTS = ['read', 'write', 'grant'];
 
@@ -131,12 +134,12 @@ export function createInvite(h, issuer, { scope, rights = ['read', 'write'], wri
   const k = generateKey();
   const entry = grantCap(h, issuer, { subject: k.pub, writer, scope, rights: [...new Set([...rights, 'grant'])], until });
   const body = { log: h.name, seed: k.priv.slice(0, 64), pub: k.pub, writer, scope: arr(scope), rights, until };
-  return { link: `pharos-invite:1:${Buffer.from(JSON.stringify(body)).toString('base64url')}`, pub: k.pub, entryId: entry.id };
+  return { link: `pharos-invite:1:${toB64u(JSON.stringify(body))}`, pub: k.pub, entryId: entry.id };
 }
 export function parseInvite(link) {
   const m = /^pharos-invite:1:([A-Za-z0-9_-]+)$/.exec(String(link));
   if (!m) throw new core.PharosError('BAD_INVITE', 'not an invite link');
-  const b = JSON.parse(Buffer.from(m[1], 'base64url').toString('utf8'));
+  const b = JSON.parse(fromB64u(m[1]));
   if (!b.seed || !b.pub || !b.writer) throw new core.PharosError('BAD_INVITE', 'incomplete invite');
   return b;
 }
