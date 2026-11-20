@@ -739,7 +739,7 @@ async function boot(){ENGINE=await new Promise(r=>{(function w(){window.__ENGINE
  if(!LOG.length&&ENGINE.role==='solo')await seed();else{SEED_HASH=await sha(enc.encode(SEED_CSV));D=fold();}
  if(ENGINE.role==='founder'){try{U.shareLink=location.origin+location.pathname+'#join='+await ENGINE.share();}catch(e){}}
  ENGINE.onChange(()=>{refreshLog();D=fold();render();storebar();});ENGINE.onStatus(()=>{refreshLog();storebar();});storebar();}
-const DEFAULT_ROUTES=window.EODB_ROUTES||['relay:'+location.origin,'relay:'+location.protocol+'//'+(location.hostname||'127.0.0.1')+':8853'];
+const DEFAULT_ROUTES=window.EODB_ROUTES||['relay:'+location.origin];
 function vShare(){const r=ENGINE.report().share;const up=r&&r.routesUp>0;const conn=r?'<span class="chip '+(up?'c-ok':'c-w')+'">'+(up?'connected':'reconnecting…')+'</span>':'';
  let h='<div class="gt">SHARING</div><div class="card">';
  if(ENGINE.role==='guest')h+='<div class="fh"><b>'+ic('users-three')+' You joined a shared space</b>'+conn+'</div><div class="note" style="margin-top:6px">What you change reaches everyone in the space, and what they change arrives here. '+ENGINE.peers().length+' device'+(ENGINE.peers().length===1?'':'s')+' so far.</div>';
