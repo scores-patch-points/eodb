@@ -120,7 +120,15 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
   // later (locator entries), and this uses all of them at once: it writes to every route, reads from every route, repairs a route that fell behind, and
   // shrugs off one that is down. More kinds of route (direct browser-to-browser, a shared folder, a file passed by hand) plug into `adapters`.
   const routeHealth = new Map(); // uri -> { ok, error, at }
-  const adapters = { relay: async (uri) => N.sealedCarrier(N.httpCarrier(uri.slice('relay:'.length)), await N.importKey(share.key)) };
+  // The connection type is invisible: a route is just a URI whose scheme names a transport that can store opaque blobs.
+  // Every raw transport is sealed above (AES-GCM), so a relay, a generic HTTP store, a WebDAV share, or a tiny-frame
+  // LoRa gateway are interchangeable. Add a scheme here and any device can use it by putting that URI in a share link.
+  const rawAdapters = {
+    relay: (uri) => N.httpCarrier(uri.slice('relay:'.length)),
+    http: (uri) => N.httpCarrier(uri.slice('http:'.length)),
+    lora: (uri) => { const [base, q] = uri.slice('lora:'.length).split('?'); const p = new URLSearchParams(q || ''); const mtu = Number(p.get('mtu')) || 200; const duty = p.has('duty') ? Number(p.get('duty')) : 0.01; return N.chunkedCarrier(N.politeCarrier(N.httpCarrier(base), { dutyCycle: duty }), { mtu }); },
+  };
+  let spaceKey = null; const getKey = async () => spaceKey || (spaceKey = await N.importKey(share.key));
   const learned = () => { try { return Loc.locators(h, 'space').map((l) => l.uri); } catch (err) { return []; } };
   const track = (uri, c) => { const mark = (ok, err) => routeHealth.set(uri, { ok, error: ok ? null : String(err && err.message || err), at: Date.now() });
     return { list: async () => { try { const r = await c.list(); mark(true); return r; } catch (e) { mark(false, e); throw e; } }, get: async (n) => { try { const r = await c.get(n); mark(true); return r; } catch (e) { mark(false, e); throw e; } }, putNew: async (n, b) => { try { const r = await c.putNew(n, b); mark(true); return r; } catch (e) { mark(false, e); throw e; } } }; };
@@ -128,7 +136,8 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
   const syncState = { timer: null, busy: false, last: null, error: null, quarantined: 0, known: new Set(), policy: null };
   async function routes() {
     const uris = [...new Set([...(share ? share.routes : []), ...learned()])], out = [];
-    for (const uri of uris) { const scheme = uri.split(':')[0]; if (!adapters[scheme]) continue; try { out.push({ uri, carrier: track(uri, await adapters[scheme](uri)) }); } catch (e) { routeHealth.set(uri, { ok: false, error: String(e.message || e), at: Date.now() }); } }
+    const key = share ? await getKey() : null;
+    for (const uri of uris) { const scheme = uri.split(':')[0]; const make = rawAdapters[scheme]; if (!make) continue; try { const raw = make(uri); out.push({ uri, carrier: track(uri, key ? N.sealedCarrier(raw, key) : raw) }); } catch (e) { routeHealth.set(uri, { ok: false, error: String(e.message || e), at: Date.now() }); } }
     return out;
   }
   // file contents travel as sealed objects named blob/<sha256>; a received one is accepted only if its bytes hash to its name
@@ -158,9 +167,19 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
   const abandon = () => { clearInterval(syncState.timer); stopListen(); store.close(); blobStore.close(); };   // an open that fails must not leave channels and timers running
   try {
   if (guest) {
-    // receive the founder's frame, kinds and grants first; then take this device's own grant from the invite key
-    const r = await syncOnce(); if (r && r.error) throw new core.PharosError('NO_ROUTE', `cannot reach the shared space: ${r.error}`);
-    if (!core.entries(h).some((e) => e.kind === 'frame')) throw new core.PharosError('NOT_PUBLISHED', 'the shared space has not been published yet: ask the person who shared it to open it once');
+    // receive the founder's frame, kinds and grants first; then take this device's own grant from the invite key.
+    // Another device may not have published, or the relay may lag a moment, so retry a few times before giving up.
+    let frame = false, routeErr = null;
+    for (let attempt = 0; attempt < 6 && !frame; attempt++) {
+      const r = await syncOnce();
+      routeErr = r && r.error ? r.error : null;
+      frame = core.entries(h).some((e) => e.kind === 'frame');
+      if (!frame && attempt < 5) await new Promise((res) => setTimeout(res, 500));
+    }
+    if (!frame) {
+      if (routeErr) throw new core.PharosError('NO_ROUTE', `cannot reach the shared space: ${routeErr}`);
+      throw new core.PharosError('NOT_PUBLISHED', 'the shared space has not been published yet: ask the person who shared it to open it once, then try again');
+    }
     if (!core.fold(h).entries.some((e) => e.kind === 'capability' && e.body && e.body.subject === dev.pub)) {
       const inv = A.parseInvite(share.invite), K = I.keyFromSeed(inv.seed);
       A.grantCap(h, K, { subject: dev.pub, writer: `guest.${devId}.*`, scope: inv.scope, rights: inv.rights, until: inv.until });
