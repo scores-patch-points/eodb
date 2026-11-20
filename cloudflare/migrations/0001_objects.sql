@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS objects (name TEXT PRIMARY KEY, value BLOB);
