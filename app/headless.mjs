@@ -48,6 +48,19 @@ if (flags.note) { space.append('ws+', { id: `w:${Date.now().toString(36)}:${Math
 
 space.onStatus(() => { const s = space.report().share; if (s) process.stdout.write(JSON.stringify({ routes: s.routes, routesUp: s.routesUp, last: s.last, error: s.error, quarantined: s.quarantined }) + '\n'); });
 
+// stigmergic worker: no one schedules anything. On each pass the node folds the log, claims any due poll/schedule trigger, runs the
+// automation, and writes the run (and every node result) back as entries. Any number of nodes can do this; claims are the coordination.
+if (flags.worker) {
+  const { tick } = await import('./worker.mjs');
+  const ms = Number(flags['worker-ms'] || 30_000);
+  const pass = async () => {
+    try { const r = await tick(space, {}); if (r.ran.length || r.skipped.length || r.errors.length) process.stdout.write(JSON.stringify({ tick: r }) + '\n'); }
+    catch (e) { process.stderr.write('worker pass: ' + (e && e.message || e) + '\n'); }
+  };
+  await pass();
+  setInterval(pass, ms);
+}
+
 const stop = () => { space.close(); process.exit(0); };
 process.on('SIGINT', stop); process.on('SIGTERM', stop);
 await new Promise(() => {});

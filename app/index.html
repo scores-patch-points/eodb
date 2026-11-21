@@ -21,8 +21,15 @@ const keymodeFor=async(space)=>{try{return await (await B.autoBackend('eodb-log-
 const open=async(opts={})=>{const space=opts.space||spaceName();const log=await B.autoBackend('eodb-log-'+space),blobs=await B.autoBackend('eodb-blobs-'+space);window.__SPACE=space;
  window.__ENGINE_READY=openSpace({name:space,backend:log.backend,blobBackend:blobs.backend,cells,names,join,...opts}).then(e=>{window.ENGINE=e;window.__NET=()=>({graph:e.networkGraph(),dot:e.networkDot(),mermaid:e.networkMermaid()});if(join)history.replaceState(null,'',location.pathname+location.search);return e;},err=>{window.__ENGINE_ERROR=err;return null;});return window.__ENGINE_READY;};
 import * as KhoraText from './vendor/khora-text.js';window.KhoraText=KhoraText;
+import {makeMeasuredLoop} from './measured-loop.mjs';window.makeMeasuredLoop=makeMeasuredLoop;
 window.PERSONA_RULES=await (await fetch('./persona/rules.json')).json().catch(()=>[]);
 window.__EODB_BOOT={join,file,open,keymodeFor};
+</script>
+<script type="module">
+import * as Automation from './automation.mjs';
+import * as Relational from './relational.mjs';
+window.Automation=Automation;
+window.Relational=Relational;
 </script>
 <script>
 (function(){try{var t=localStorage.getItem('eodb-theme');if(t!=='light'&&t!=='dark')t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
@@ -212,8 +219,10 @@ td input{font:inherit;padding:2px 6px;border:1px solid var(--acc);border-radius:
 .au-node .p.out .d{background:var(--acc);margin-left:auto}
 .au-node .p.in .d{margin-right:auto}
 .au-node .f{padding:3px 10px 8px}
-.au-node input,.au-node textarea{width:100%;font:inherit;font-size:12.5px;border:1px solid var(--line);border-radius:6px;padding:4px 6px}
+.au-node input,.au-node textarea,.au-node select{width:100%;font:inherit;font-size:12.5px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;background:var(--bg);color:var(--ink)}
 .au-node textarea{resize:vertical;min-height:34px}
+.au-node .cb{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink2)}
+.au-node .cb input{width:auto}
 .au-node .ov{margin:2px 10px 8px;padding:5px 7px;background:var(--sel);border-radius:6px;font:11.5px/1.4 ui-monospace,Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:110px;overflow:auto}
 .au-svg{position:absolute;inset:0;pointer-events:none;z-index:1}
 .au-pal{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
@@ -413,45 +422,42 @@ function mapsFor(src,k){const m={};for(const e of D.mapLog.filter(e=>e.src===src
 function unresolved(src){const s=srcOf(src);if(!s)return 0;const m=mapsFor(src);return s.cols.filter(c=>!m[c]||m[c].status==='superseded').length;}
 /* ================= automations ================= */
 let AUTO={nodes:[],edges:[],conn:null,n:1};
-const AUTODEFS={text:{label:'Text',in:[],out:['text'],fields:[['text','textarea','paste or write…']]},
- http:{label:'HTTP call',in:['body'],out:['response'],fields:[['url','text','https://api.example.com/…'],['method','text','POST']]},
- model:{label:'Model',in:['prompt'],out:['answer'],fields:[['prompt','textarea','prompt (or wire it in)']]},
- store:{label:'Store to log',in:['value'],out:['id']}};
-async function autoExec(n,inp){const f=n.fields||{};try{
- if(n.type==='text')return{text:f.text||''};
- if(n.type==='http'){const r=await fetch(f.url||'',{method:f.method||'GET',headers:{'Content-Type':'application/json'},body:inp.body!==undefined?JSON.stringify(inp.body):undefined});const t=await r.text();return{response:t.slice(0,500)};}
- if(n.type==='model'){const p=(inp.prompt!==undefined?inp.prompt:(f.prompt||''));return{answer:await askModel(p,personaFor(p))};}
- if(n.type==='store'){const e=ENGINE.append('auto+',{name:'automation result',value:inp.value});return{id:e.id};}
-}catch(e){return{error:String(e&&e.message||e)}}return{};}
+function autoDefs(){return (window.Automation&&window.Automation.NODE_TYPES)||{};}
+function autoField(n,f){const k=f[0],kind=f[1]||'text',ph=f[2]||'',opts=f[3]||[],v=n.fields[k]==null?'':n.fields[k];
+ if(kind==='textarea')return '<textarea data-k="'+k+'" placeholder="'+esc(ph)+'">'+esc(v)+'</textarea>';
+ if(kind==='select')return '<select data-k="'+k+'">'+opts.map(o=>'<option'+(v===o?' selected':'')+'>'+esc(o)+'</option>').join('')+'</select>';
+ if(kind==='checkbox')return '<label class="cb"><input type="checkbox" data-k="'+k+'"'+(v?' checked':'')+'> '+esc(ph||k)+'</label>';
+ return '<input data-k="'+k+'" value="'+esc(v)+'" placeholder="'+esc(ph)+'">';}
 function autoAdd(t){const n={id:'a'+(AUTO.n++),type:t,x:40,y:40+30*AUTO.nodes.length,fields:{}};AUTO.nodes.push(n);drawAuto();}
 function autoRemove(id){AUTO.nodes=AUTO.nodes.filter(n=>n.id!==id);AUTO.edges=AUTO.edges.filter(e=>e.from!==id&&e.to!==id);drawAuto();}
 function autoPortCenter(id,port,dir){const el=document.getElementById('au-'+id);if(!el)return null;const p=el.querySelector('.p.'+dir+'[data-port="'+port+'"] .d');if(!p)return null;const r=p.getBoundingClientRect(),c=el.parentNode.getBoundingClientRect();return{x:r.left-c.left+r.width/2+el.parentNode.scrollLeft,y:r.top-c.top+r.height/2+el.parentNode.scrollTop};}
 function autoEdges(){const svg=document.getElementById('au-svg');if(!svg)return;svg.innerHTML='';for(const e of AUTO.edges){const a=autoPortCenter(e.from,e.fromPort,'out'),b=autoPortCenter(e.to,e.toPort,'in');if(!a||!b)continue;const l=document.createElementNS('http://www.w3.org/2000/svg','path');const mx=(a.x+b.x)/2;l.setAttribute('d','M '+a.x+' '+a.y+' C '+mx+' '+a.y+', '+mx+' '+b.y+', '+b.x+' '+b.y);l.setAttribute('stroke','var(--acc)');l.setAttribute('stroke-width','2');l.setAttribute('fill','none');svg.appendChild(l);}}
 function drawAuto(){
- const defs=Object.keys(AUTODEFS);
- let pal='<div class="au-pal">'+defs.map(t=>'<button class="b" onclick="autoAdd(\''+t+'\')">+ '+AUTODEFS[t].label+'</button>').join('')+'<span style="margin-left:auto"></span><button class="b p" onclick="autoRun()">\u25b6 Run</button><button class="b" onclick="autoSave()">Save</button><button class="b" onclick="autoClear()">Clear</button></div>';
+ const D=autoDefs(),defs=Object.keys(D);
+ let pal='<div class="au-pal">'+defs.map(t=>'<button class="b" onclick="autoAdd(\''+t+'\')">+ '+D[t].label+'</button>').join('')+'<span style="margin-left:auto"></span><button class="b p" onclick="autoRun()">\u25b6 Run</button><button class="b" onclick="autoSave()">Save</button><button class="b" onclick="autoClear()">Clear</button></div>';
  let canv='<div class="au-canvas" id="au-canvas" onscroll="autoEdges()"><svg class="au-svg" id="au-svg"></svg>';
- for(const n of AUTO.nodes){const d=AUTODEFS[n.type];
+ for(const n of AUTO.nodes){const d=D[n.type];if(!d)continue;
   const ins=d.in.map(p=>'<div class="p in" data-port="'+p+'"><span class="d" data-node="'+n.id+'" data-port="'+p+'" data-dir="in"></span>'+esc(p)+'</div>').join('');
   const outs=d.out.map(p=>'<div class="p out" data-port="'+p+'"><span>'+esc(p)+'</span><span class="d" data-node="'+n.id+'" data-port="'+p+'" data-dir="out"></span></div>').join('');
-  const fs=(d.fields||[]).map(f=>'<div class="f">'+(f[1]==='textarea'?'<textarea data-k="'+f[0]+'" placeholder="'+esc(f[2]||'')+'">'+esc(n.fields[f[0]]||'')+'</textarea>':'<input data-k="'+f[0]+'" value="'+esc(n.fields[f[0]]||'')+'" placeholder="'+esc(f[2]||'')+'">')+'</div>').join('');
+  const fs=(d.fields||[]).map(f=>'<div class="f">'+autoField(n,f)+'</div>').join('');
   canv+='<div class="au-node" id="au-'+n.id+'" style="left:'+n.x+'px;top:'+n.y+'px"><div class="h"><span class="dot"></span>'+esc(d.label)+'<span class="x" onclick="autoRemove(\''+n.id+'\')">\u2715</span></div><div>'+ins+outs+'</div>'+fs+'<div class="ov" id="au-out-'+n.id+'"></div></div>';
  }
  canv+='</div>';
  document.getElementById('auto-pal').innerHTML=pal;
  const c=document.getElementById('auto-canv'); c.innerHTML=canv;
- for(const n of AUTO.nodes){const el=document.getElementById('au-'+n.id);
+ for(const n of AUTO.nodes){const el=document.getElementById('au-'+n.id);if(!el)continue;
   el.querySelector('.h').addEventListener('mousedown',(ev)=>{const sx=ev.clientX,sy=ev.clientY,ox=n.x,oy=n.y;const mv=(e)=>{n.x=ox+e.clientX-sx;n.y=oy+e.clientY-sy;el.style.left=n.x+'px';el.style.top=n.y+'px';autoEdges();};const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up);};window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up);});
-  el.querySelectorAll('input,textarea').forEach(f=>f.addEventListener('input',()=>{n.fields[f.dataset.k]=f.value;}));
+  el.querySelectorAll('input,textarea,select').forEach(f=>{const set=()=>{n.fields[f.dataset.k]=f.type==='checkbox'?f.checked:f.value;};f.addEventListener('input',set);f.addEventListener('change',set);});
   el.querySelectorAll('.d').forEach(p=>p.addEventListener('mousedown',(ev)=>{ev.stopPropagation();const dir=p.dataset.dir,id=p.dataset.node,port=p.dataset.port;
    if(dir==='out'){AUTO.conn={id,port};el.querySelectorAll('.d').forEach(x=>x.style.boxShadow=x===p?'0 0 0 3px var(--accbg)':'');}
    else if(AUTO.conn){if(!AUTO.edges.some(e=>e.from===AUTO.conn.id&&e.fromPort===AUTO.conn.port&&e.to===id&&e.toPort===port))AUTO.edges.push({from:AUTO.conn.id,fromPort:AUTO.conn.port,to:id,toPort:port});AUTO.conn=null;document.querySelectorAll('.d').forEach(x=>x.style.boxShadow='');autoEdges();}}));
  }
  autoEdges();
 }
-async function autoRun(){const inc={};for(const e of AUTO.edges){const t=AUTO.nodes.find(n=>n.id===e.to);if(!t)continue;const i=AUTODEFS[t.type].in.indexOf(e.toPort);if(i<0)continue;(inc[e.to]=inc[e.to]||{})[i]={id:e.from,port:e.fromPort};}
- const out={},pend=new Set(AUTO.nodes.map(n=>n.id));let guard=AUTO.nodes.length+1;
- while(pend.size&&guard--){let prog=false;for(const id of [...pend]){const n=AUTO.nodes.find(x=>x.id===id);const inp={};let ready=true;AUTODEFS[n.type].in.forEach((p,i)=>{const s=inc[id]&&inc[id][i];if(s&&out[s.id]!==undefined)inp[p]=out[s.id][s.port];else if(s)ready=false;else inp[p]=undefined;});if(!ready)continue;const el=document.getElementById('au-out-'+id);if(el){el.textContent='\u2026';}out[id]=await autoExec(n,inp);if(el){el.textContent=JSON.stringify(out[id],null,1);el.style.color=out[id].error?'var(--bad)':'var(--acc)';}pend.delete(id);prog=true;}if(!prog)break;}
+async function autoRun(){
+ const name=AUTO.name||('automation '+(ENGINE.view().filter(e=>e.op==='auto+').length+1));
+ const res=await ENGINE.runAutomation({name,nodes:AUTO.nodes,edges:AUTO.edges},{askModel:askModel,fetch:fetch});
+ for(const id of res.order){const r=res.results[id];const el=document.getElementById('au-out-'+id);if(!el)continue;el.textContent=JSON.stringify(r.output,null,1);el.style.color=r.ok?'var(--acc)':'var(--bad)';}
 }
 function autoSave(){if(!AUTO.nodes.length)return;const name='automation '+(ENGINE.view().filter(e=>e.op==='auto+').length+1);ENGINE.append('auto+',{name,nodes:AUTO.nodes,edges:AUTO.edges});drawAuto();}
 function autoClear(){AUTO={nodes:[],edges:[],conn:null,n:1};drawAuto();}
@@ -459,6 +465,19 @@ function autoLoad(w){AUTO={nodes:(w.body.nodes||[]).map(n=>({...n,fields:n.field
 function vAuto(){let h=crumb(ic('git-branch')+' Automations')+'<h1>Automations</h1><p class="sub">Connect nodes to drive other tools. An automation is saved as entries, so it re-runs under a better reader or model as new entries, never an overwrite.</p><div id="auto-pal"></div><div id="auto-canv"></div>';
  const saved=ENGINE.view().filter(e=>e.op==='auto+');if(saved.length){h+='<div class="gt">Saved</div>'+saved.map(w=>'<span class="chip c-ok" style="cursor:pointer;margin:2px" onclick="autoLoad(ENGINE.view().find(e=>e.id===\''+w.id+'\'))">'+esc(w.body.name||w.id)+'</span>').join('');}
  return h;}
+/* ================= sql (the log as a conventional database) ================= */
+function vSql(){const R=window.Relational;const db=R.materialize(ENGINE.view());
+ let h=crumb(ic('database')+' SQL')+'<h1>SQL</h1><p class="sub">The whole log folded into tables. Query it, or export it as SQLite / JSON.</p>';
+ h+='<div class="row"><div class="grow card"><b>Query</b><textarea id="sqlq" style="width:100%;height:96px;font-family:var(--mono);margin-top:6px" placeholder="SELECT * FROM Contracts WHERE amount > 5000 ORDER BY amount DESC"></textarea>';
+ h+='<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><button class="b p" onclick="runSql()">'+ic('magnifying-glass')+' Run</button><button class="b" onclick="dl(\'eodb.sql\',window.Relational.toSQLite(window.Relational.materialize(ENGINE.view())),\'application/sql\')">'+ic('download-simple')+' Export .sql</button><button class="b" onclick="dl(\'eodb.json\',JSON.stringify(window.Relational.toJSON(window.Relational.materialize(ENGINE.view())),null,2),\'application/json\')">'+ic('download-simple')+' Export JSON</button></div>';
+ h+='<div id="sql-res" style="margin-top:10px"></div></div>';
+ h+='<div class="grow card"><b>Tables ('+db.tables.length+')</b><div class="wrap" style="margin-top:8px"><table><tr><th>Table</th><th>Fields</th><th>Rows</th></tr>'+db.tables.map(t=>'<tr><td class="mono">'+esc(t.name)+'</td><td>'+t.columns.map(c=>esc(c.name)).join(', ')+'</td><td class="num">'+t.rows.length+'</td></tr>').join('')+'</table></div></div></div>';
+ return h;}
+function runSql(){const el=document.getElementById('sql-res');const q=(document.getElementById('sqlq')||{}).value||'';if(!q){el.innerHTML='';return;}
+ try{const r=ENGINE.sql(q);const cols=r.columns&&r.columns.length?r.columns:Object.keys(r.rows[0]||{});
+  let h='<div class="note">'+r.rows.length+' row'+(r.rows.length===1?'':'s')+'</div><div class="wrap" style="margin-top:6px"><table><tr>'+cols.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr>'+r.rows.map(row=>'<tr>'+cols.map(c=>'<td>'+esc(row[c]==null?'':row[c])+'</td>').join('')+'</tr>').join('')+'</table></div>';
+  el.innerHTML=h;}catch(e){el.innerHTML='<div class="alert">'+esc(e.message)+'</div>';}}
+function dl(name,text,type){const b=new Blob([text],{type});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},0);}
 /* ================= network ================= */
 function renderNetwork(){
   const g=ENGINE.networkGraph(), el=document.getElementById('net-canvas'); if(!el)return;
@@ -497,7 +516,7 @@ function narrowNav(){const on=matchMedia('(max-width:800px)').matches;document.b
 document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('aside .it, aside .wsh, aside .link')&&matchMedia('(max-width:800px)').matches)NAVOPEN=false;},true);
 addEventListener('resize',()=>{if(document.querySelector('aside'))narrowNav();});
 function render0(){side();tabbar();const m=document.getElementById('main');
- m.innerHTML=U.sel==='docs'?vDocs('doc'):U.sel==='notes'?vDocs('note'):/^doc:/.test(U.sel)?vDoc(U.sel.slice(4)):U.sel==='ws'?vWs():U.sel==='files'?vFiles():U.sel==='log'?vLog():U.sel==='match'?vMatch():U.sel==='profile'?vProfile():U.sel==='chat'?vChat():U.sel==='auto'?vAuto():U.sel==='net'?vNetwork():vTable();
+ m.innerHTML=U.sel==='docs'?vDocs('doc'):U.sel==='notes'?vDocs('note'):/^doc:/.test(U.sel)?vDoc(U.sel.slice(4)):U.sel==='ws'?vWs():U.sel==='files'?vFiles():U.sel==='log'?vLog():U.sel==='match'?vMatch():U.sel==='profile'?vProfile():U.sel==='chat'?vChat():U.sel==='auto'?vAuto():U.sel==='net'?vNetwork():U.sel==='sql'?vSql():vTable();
  document.body.classList.toggle('viewing',!!U.view);
  if(U.sel==='files')wireDrop();
  if(U.sel==='profile')setTimeout(drawQr,0);
@@ -507,7 +526,7 @@ function render0(){side();tabbar();const m=document.getElementById('main');
   docFocus();
  const ed=document.getElementById('ed');if(ed){ed.focus();ed.select&&ed.select();}}
 function tabbar(){const t=document.getElementById('tabbar');if(!t)return;const onDoc=/^doc:/.test(U.sel);
-  const items=[['files','archive','Files',U.sel==='files'],['chat','chat-circle-text','Ask',U.sel==='chat'],['auto','git-branch','Automations',U.sel==='auto'],['docs','file-text','Docs',U.sel==='docs'||(onDoc&&(DOC(U.sel.slice(4))||{}).kind==='doc')],['notes','note-pencil','Notes',U.sel==='notes'||(onDoc&&(DOC(U.sel.slice(4))||{}).kind==='note')],['profile','user','Profile',U.sel==='profile']];
+  const items=[['files','archive','Files',U.sel==='files'],['chat','chat-circle-text','Ask',U.sel==='chat'],['auto','git-branch','Automations',U.sel==='auto'],['sql','database','SQL',U.sel==='sql'],['docs','file-text','Docs',U.sel==='docs'||(onDoc&&(DOC(U.sel.slice(4))||{}).kind==='doc')],['notes','note-pencil','Notes',U.sel==='notes'||(onDoc&&(DOC(U.sel.slice(4))||{}).kind==='note')],['profile','user','Profile',U.sel==='profile']];
  t.innerHTML=items.map(([k,i,n,on])=>'<button class="t '+(on?'on':'')+'" onclick="U.view=null;U.open=null;U.sel=\''+k+'\';render()">'+ic(i)+n+'</button>').join('');}
 function listSpaces(){try{return JSON.parse(localStorage.getItem('eodb-spaces')||'[]');}catch{return [];}}
 function currentSpace(){return localStorage.getItem('eodb-space')||listSpaces()[0]||'Work';}
@@ -536,6 +555,7 @@ function side(){
  h+='<div class="it '+(U.sel==='notes'||(onDoc&&(DOC(U.sel.slice(4))||{}).kind==='note')?'on':'')+'" onclick="U.sel=\'notes\';render()">'+ic('note-pencil')+' Notes<span class="n">'+wsDocs(U.ws,'note').length+'</span></div>';
   h+='<div class="it '+(U.sel==='chat'?'on':'')+'" onclick="U.sel=\'chat\';render()">'+ic('chat-circle-text')+' Ask<span class="n">'+U.chats.length+'</span></div>';
   h+='<div class="it '+(U.sel==='auto'?'on':'')+'" onclick="U.sel=\'auto\';render()">'+ic('git-branch')+' Automations</div>';
+  h+='<div class="it '+(U.sel==='sql'?'on':'')+'" onclick="U.sel=\'sql\';render()">'+ic('database')+' SQL</div>';
   h+='<div class="it '+(U.sel==='net'?'on':'')+'" onclick="U.sel=\'net\';render()">'+ic('link-simple')+' Network</div>';
  h+='<div class="side-h">DATABASES</div>';
  for(const w of D.ws){const on=U.ws===w.id;
@@ -1458,25 +1478,30 @@ async function ask(q,att,onChunk){const t=String(q||'').trim().toLowerCase();con
   const hist=(!withData&&!isFollow&&c)?chatContext(q,c):'';
   const user=withData?('DATA:\n'+facts.join('\n')+'\n\nQuestion: '+q):(isFollow?('Previous answer: '+lastSys.text+'\n\nFollow-up question: '+q):(hist?('Conversation so far:\n'+hist+'\n\nQuestion: '+q):q));
   // The model is the MOUTH (it only emits raw candidates); the system is the VOICE (it evaluates, re-grounds, selects, and shapes what is said).
-  let answer=null,err=null,mouths=[],recCount=0,checks=[];
-  const N=withData?3:2;
-  for(let i=0;i<N;i++){
+  // The loop is bound by the MEASURED loop, not a hand-set count: each round reports how much remains unresolved (the falsifier's
+  // unsupported/contradicted count), and the streaming-DMD growth of that count decides whether to keep repairing or stop.
+  let answer=null,err=null,mouths=[],recCount=0,checks=[],lastV=null;
+  const ML=window.makeMeasuredLoop?window.makeMeasuredLoop({ceiling:6}):null;
+  let best=null;
+  for(let round=0;;round++){
    let m=null;
-   try{m=await askModel(user,system,i===0?onChunk:null);}catch(e){err=e;}
-   if(!m)continue;
+   try{m=await askModel(round===0?user:('DATA:\n'+facts.join('\n')+'\n\nQuestion: '+q+'\n\nAnswer using only the DATA above, and cite the numbers you use.'),system,round===0?onChunk:null);}catch(e){err=e;}
+   if(!m)break;
    const eva=evaRules(m);if(!eva.ok)recCount++;
-   mouths.push({spoken:voice(eva.ok?m:recRules(m))});
+   const spoken=voice(eva.ok?m:recRules(m));
+   mouths.push({spoken});
+   const c=gradeAnswer(spoken,facts);
+   const bad=c.filter(x=>x.standing==='unsupported'||x.standing==='contradicted').length;
+   if(!best||bad<best.bad)best={spoken,checks:c,bad};
+   if(!ML)break;
+   ML.push(bad);lastV=ML.verdict();
+   if(!lastV.continue)break;
   }
-  if(mouths.length){
-   let best=null;
-   for(const m of mouths){const c=gradeAnswer(m.spoken,facts);const bad=c.filter(x=>x.standing==='unsupported'||x.standing==='contradicted').length;const score=bad*100-Math.min(m.spoken.length,1200);if(!best||score<best.score)best={spoken:m.spoken,checks:c,score,bad};}
-   answer=best.spoken;checks=best.checks;
-   // RE-GROUND: if the winner still has unsupported/contradicted claims and we hold data, one more grounded attempt must do better.
-   if(best.bad>0&&facts.length){
-    try{const retry='DATA:\n'+facts.join('\n')+'\n\nQuestion: '+q+'\n\nAnswer using only the DATA above, and cite the numbers you use.';const m2=await askModel(retry,system);const s2=voice(evaRules(m2).ok?m2:recRules(m2));const c2=gradeAnswer(s2,facts);if(c2.filter(x=>x.standing==='unsupported'||x.standing==='contradicted').length<best.bad){answer=s2;checks=c2;recCount++;}}catch(e){}}
-  }
+  if(best){answer=best.spoken;checks=best.checks;}
   if(!answer){answer=facts.length?fallbackAnswer(q,facts):'I couldn\'t reach the local model. Is Ollama running on port 11434?';}
-  checks.push({s:'DEF/EVA/REC: '+recCount+' re-ground'+(recCount===1?'':'s'),standing:recCount===0?'supported':'partial'});
+  const stopped=lastV?lastV.verdict:'aborted';
+  const trace='measured loop '+stopped+' after '+mouths.length+' mouth call'+(mouths.length===1?'':'s')+(recCount?(' ('+recCount+' eva clean'+(recCount===1?'':'s')+')'):'');
+  checks.push({s:trace,standing:(best&&best.bad===0)?'supported':'partial'});
   return {answer,mouth:mouths.length?mouths[0].spoken:null,facts,system,user,checks,err:err&&String(err.message||err)};}
 function vChat(){const c=curChat();
  let h=crumb(ic('chat-circle-text')+' Ask')+'<h1 style="display:flex;align-items:center;gap:6px">Ask'+(c?'<button class="cicon" title="New thread here" aria-label="New thread" style="margin-left:auto" onclick="newThread()">'+ic('chat-text')+'</button>':'')+'</h1>';

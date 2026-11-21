@@ -17,6 +17,8 @@ import { gate } from './vendor/pharos/gate.mjs';
 import * as N from './net.mjs';
 import * as G from './graph.mjs';
 import * as Tab from './tabular.mjs';
+import * as Rel from './relational.mjs';
+import * as Automation from './automation.mjs';
 import { makeName } from './naming.mjs';
 
 // the page's operation names  ->  [pharos kind, cell]. Creating things is INS; setting a value on an existing thing is DEF (so two devices setting the
@@ -30,6 +32,8 @@ export const OPS = {
   'blk+': ['blk', 'INS·Figure'], 'blk=': ['blk-set', 'DEF·Figure'], 'voice+': ['voice', 'INS·Figure'],
   read: ['read', 'EVA·Figure'], map: ['map', 'CON·Figure'], retract: ['retract', 'NUL·Figure'],
   'auto+': ['auto', 'INS·Figure'],
+  'auto-run+': ['auto-run', 'INS·Figure'], 'auto-node+': ['auto-node', 'INS·Figure'],
+  'auto-trigger+': ['auto-trigger', 'INS·Figure'], 'auto-event+': ['auto-event', 'INS·Figure'], 'auto-claim+': ['auto-claim', 'INS·Figure'],
   'project+': ['project', 'INS·Figure'],
 };
 const KIND_OP = Object.fromEntries(Object.entries(OPS).map(([op, [kind]]) => [kind, op]));
@@ -66,6 +70,11 @@ function addrOf(op, b) {
     case 'voice+': return `voice:${b.doc}:${n()}`;
     case 'read': return `read:${b.hash}:${n()}`; case 'map': return `map:${b.src}:${b.col}`;
     case 'auto+': return `auto:${n()}`;
+    case 'auto-run+': return `auto-run:${b.id}`;
+    case 'auto-node+': return `auto-node:${n()}`;
+    case 'auto-trigger+': return `auto-trigger:${b.id}`;
+    case 'auto-event+': return `auto-event:${n()}`;
+    case 'auto-claim+': return `auto-claim:${n()}`;
     case 'project+': return `project:${b.id}`;
     case 'retract': return `retract:${b.of}`;
     default: throw new core.PharosError('UNKNOWN_OP', `unknown operation "${op}"`);
@@ -298,7 +307,24 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
     /** turn a file's bytes (CSV/TSV/JSON/JSONL) into a table: infer field types and land the rows. Returns { tableId, fields, rows }. */
     importTable({ name, bytes, type = '', ws = 'w1' } = {}) {
       const t = Tab.parse(bytes, name, type);
-      const spec = Tab.tableSpec({ name, columns: t.columns, rows: t.rows });
+      return space.landTable({ name, columns: t.columns, rows: t.rows, ws });
+    },
+    /** land already-shaped rows (name-keyed objects) as a table — the ingest primitive. Creates a table, or appends to one of the same name. */
+    landTable({ name = 'Imported', columns, rows = [], ws = 'w1', append = false } = {}) {
+      columns = columns && columns.length ? columns : (rows.length ? Object.keys(rows[0]) : []);
+      rows = (rows || []).map((r) => (r && typeof r === 'object' && !Array.isArray(r) ? r : { value: r }));
+      if (append) {
+        const existing = Rel.materialize(space.view()).tables.find((t) => t.ws === ws && t.name === name);
+        if (existing) {
+          const base = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+          const fieldMap = new Map(existing.columns.map((c) => [c.name, c.id]));
+          for (const c of columns) if (!fieldMap.has(c)) { const id = `f${base}${fieldMap.size}`; space.append('fld+', { tb: existing.id, id, n: c, t: Tab.inferType(rows.map((r) => r[c])) }); fieldMap.set(c, id); }
+          const rr = rows.map((r, i) => ({ id: `r${base}${i}`, v: Object.fromEntries(columns.map((c) => [fieldMap.get(c), r[c]])) }));
+          space.append('rows+', { tb: existing.id, rows: rr, src: { name } });
+          return { tableId: existing.id, fields: fieldMap.size, rows: rr.length };
+        }
+      }
+      const spec = Tab.tableSpec({ name, columns, rows });
       const base = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
       const tbId = `t${base}`;
       space.append('tb+', { id: tbId, ws, name: spec.name, std: null });
@@ -307,6 +333,33 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
       space.append('rows+', { tb: tbId, rows: spec.rows.map((r, i) => ({ id: `r${base}${i}`, v: Object.fromEntries(fields.map((f) => [f.id, r[f.n]])) })) });
       return { tableId: tbId, fields: fields.length, rows: spec.rows.length };
     },
+    /** fold the log into named tables (the relational view). Everything is derived — a deletable cache. */
+    materialize() { return Rel.materialize(space.view()); },
+    /** run a SQL query over the materialized tables. */
+    sql(q) { return Rel.select(space.materialize(), q); },
+    /** run an automation graph; ctx may add { fetch, askModel, fs }. The run and every node result become entries (the audit trail). */
+    async runAutomation(graph, ctx = {}) {
+      const trigger = Automation.triggerOf(graph);
+      const runId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+      space.append('auto-run+', { id: runId, auto: graph.name || null, trigger: trigger.type, triggerId: ctx.triggerId || null, ts: Date.now() });
+      const result = await Automation.runAutomation(graph, { space, ...ctx });
+      for (const id of result.order) {
+        const r = result.results[id];
+        const n = (graph.nodes || []).find((x) => x.id === id) || {};
+        space.append('auto-node+', { run: runId, node: id, type: n.type || null, ok: r.ok, error: r.error, output: r.output });
+      }
+      const okCount = result.order.filter((id) => result.results[id] && result.results[id].ok).length;
+      space.append('auto-node+', { run: runId, node: '$done', type: null, ok: result.ok, error: null, output: { ok: result.ok, counts: { nodes: result.order.length, ok: okCount } } });
+      return { ...result, runId };
+    },
+    /** register a trigger for an automation — an entry any peer can read. Peers act on it, no one orchestrates it. */
+    registerTrigger({ id, auto, type, path, cron, intervalMs } = {}) {
+      const t = { id: id || `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, auto: auto || null, type: type || 'manual', path: path || null, cron: cron || null, intervalMs: intervalMs || null, last: null, next: null };
+      space.append('auto-trigger+', t);
+      return t;
+    },
+    /** read the audit trail: every automation definition, run, node result, trigger and claim, in order. */
+    automationLog() { return space.view().filter((e) => ['auto+', 'auto-run+', 'auto-node+', 'auto-trigger+', 'auto-event+', 'auto-claim+'].includes(e.op)); },
     syncOnce, get role() { return guest ? 'guest' : share ? 'founder' : 'solo'; },   // live: a solo space becomes a founder's the moment it is shared
     /** devices seen in the log (the writer id before the tab part) */
     peers() { const d = new Set(); for (const e of core.entries(h)) if (!INFRA.has(e.kind) && KIND_OP[e.kind]) d.add(e.by.split('.').slice(0, e.by.startsWith('guest.') ? 2 : 1).join('.')); return [...d]; },
