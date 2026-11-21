@@ -178,6 +178,14 @@ td input{font:inherit;padding:2px 6px;border:1px solid var(--acc);border-radius:
 .welcome{text-align:center;color:var(--mut);padding:56px 10px 20px}
 .welcome .bmark{margin-bottom:4px}
 .cchat{max-width:768px;margin:0 auto}
+.corg{margin:0 0 14px}
+.cproj{font-size:11px;font-weight:600;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;padding:10px 4px 2px;display:flex;align-items:center;gap:6px}
+.cproj .xd{opacity:.5}
+.citem{font-size:13.5px;padding:4px 8px;border-radius:7px;cursor:pointer;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.citem .car{opacity:.4;display:inline-block;width:10px}
+.citem:hover{background:var(--sel);color:var(--ink)}
+.citem.on{background:var(--accbg);color:var(--acc);font-weight:600}
+.cempty{font-size:12.5px;color:var(--dim);padding:2px 8px}
 .cinput{display:flex;flex-direction:column;gap:8px;padding:12px 16px 32px;max-width:760px;width:100%}
 .composer{display:flex;align-items:flex-end;gap:2px;background:var(--card);border:1px solid var(--line2);border-radius:22px;padding:5px;box-shadow:0 4px 16px rgba(0,0,0,.05)}
 .composer:focus-within{border-color:var(--acc);box-shadow:0 4px 16px rgba(0,0,0,.05),0 0 0 3px var(--accbg)}
@@ -363,7 +371,7 @@ async function seed(){
  D=fold();
 }
 /* ================= UI state ================= */
-let U={dpanel:null,hist:null,share:false,cur:null,cb:null,focus:null,recmsg:'',open:null,view:null,qr:false,chats:[],chatId:null,att:[],ws:'w1',sel:'ws',tab:'data',mtab:'match',src:null,adding:null,edit:null,tt:null,virt:null,msg:'',pickCol:null,pickRel:'close',driftOn:false,driftDone:false,drop:''};
+let U={dpanel:null,hist:null,share:false,cur:null,cb:null,focus:null,recmsg:'',open:null,view:null,qr:false,chats:[],projects:[],chatId:null,att:[],ws:'w1',sel:'ws',tab:'data',mtab:'match',src:null,adding:null,edit:null,tt:null,virt:null,msg:'',pickCol:null,pickRel:'close',driftOn:false,driftDone:false,drop:''};
 const W=()=>D.ws.find(w=>w.id===U.ws);
 const TB=id=>D.tb.find(t=>t.id===id);
 const wsTables=w=>D.tb.filter(t=>t.ws===w);
@@ -557,24 +565,31 @@ function closeM(){document.getElementById('modal').classList.remove('on');}
 function vProv(t){const bySrc={};t.r.forEach(r=>{const k=r.src?r.src.name:'Entered by hand';(bySrc[k]=bySrc[k]||[]).push(r);});
  return '<p class="sub">Rows can be traced to the file they came from. Retracting a landing removes exactly those rows.</p>'+(Object.keys(bySrc).length?Object.entries(bySrc).map(([k,v])=>'<div class="card" style="margin-bottom:8px"><b>'+ic(v[0].src?'file-csv':'user')+' '+esc(k)+'</b><div class="note">'+v.length+' rows'+(v[0].src?' · log entry '+v[0].eid.slice(0,10)+'…':'')+'</div></div>').join(''):'<p class="note">No rows yet.</p>');}
 /* ================= FILES: pure bucket + Proteus virtual files ================= */
+function fileKind(f){return (READS(f.hash).slice(-1)[0]||{}).kind||((/csv/i.test(f.type)||/\.csv$/i.test(f.name))?'csv':'binary');}
+function drow(x){const ico=x.t==='file'?ic(iconFor(fileKind(x))):ic(x.t==='note'?'note-pencil':'file-text');
+ const open=x.t==='file'?("U.view='"+x.hash+"';render()"):("U.sel='doc:"+x.id+"';render()");
+ const ws=esc((D.ws.find(w=>w.id===x.ws)||{}).name||'');
+ const meta=x.t==='file'?(ws+' · '+fmtSize(x.size||0)):(ws+' · '+(x.t==='note'?'note':'document'));
+ return '<div class="drow" onclick="'+open+'"><span class="dic">'+ico+'</span><div class="dnm">'+esc(x.name)+'</div><div class="dmeta">'+meta+'</div></div>';}
 function vFiles(){
  if(U.view)return vFileView(U.view);
  const tab=U.ftab||'all';
- const all=D.files;
- const recents=all.filter(f=>READS(f.hash).length).sort((a,b)=>(READS(b.hash).slice(-1)[0]||{seq:0}).seq-(READS(a.hash).slice(-1)[0]||{seq:0}).seq);
- const live=new Set(all.map(f=>f.eid));
+ const files=D.files.map(f=>({t:'file',name:f.name,hash:f.hash,ws:f.ws,size:f.size,type:f.type,eid:f.eid,seq:f.seq||0}));
+ const docs=D.docs.map(d=>({t:d.kind==='note'?'note':'doc',name:d.title,id:d.id,ws:d.ws,eid:d.eid,seq:d.seq||0}));
+ const all=[...files,...docs].sort((a,b)=>b.seq-a.seq);
+ const recents=[...files.filter(f=>READS(f.hash).length),...docs].sort((a,b)=>b.seq-a.seq);
+ const live=new Set([...files.map(f=>f.eid),...docs.map(d=>d.eid)]);
  const retBy=new Map(LOG.filter(e=>e.op==='retract').map(e=>[e.body.of,e.id]));
- const trash=LOG.filter(e=>e.op==='file+'&&!live.has(e.id)).map(e=>({...e.body,fileId:e.id,retractId:retBy.get(e.id)||'',ts:e.ts}));
+ const trash=LOG.filter(e=>(e.op==='file+'||e.op==='doc+')&&!live.has(e.id)).map(e=>({...e.body,t:e.op==='doc+'?(e.body.kind==='note'?'note':'doc'):'file',name:e.body.name||e.body.title||'',eid:e.id,retractId:retBy.get(e.id)||''}));
  const TABS=[['all','hard-drives','All',all.length],['recents','clock','Recents',recents.length],['trash','trash','Trash',trash.length]];
  const list=tab==='recents'?recents:tab==='trash'?trash:all;
- const fileKind=f=>(READS(f.hash).slice(-1)[0]||{}).kind||((/csv/i.test(f.type)||/\.csv$/i.test(f.name))?'csv':'binary');
  let h='<div class="fh" style="margin-bottom:12px"><h1 style="margin:0">Files</h1><label class="b p" style="margin-left:auto">'+ic('upload-simple')+' Upload<input id="fi" type="file" multiple style="display:none"></label></div>';
  h+='<div class="dtabs">'+TABS.map(([k,i,n,c])=>'<button class="dtab'+(tab===k?' on':'')+'" onclick="U.ftab=\''+k+'\';render()">'+ic(i)+' '+n+' <span class="dc">'+c+'</span></button>').join('')+'</div>';
  if(U.drop)h+='<div class="note" style="margin-bottom:10px">'+esc(U.drop)+'</div>';
  if(tab==='trash'){
-  h+=trash.length?'<div class="dlist">'+trash.map(f=>'<div class="drow"><span class="dic">'+ic(iconFor(fileKind(f)))+'</span><div class="dnm">'+esc(f.name)+'</div><div class="dmeta">'+fmtSize(f.size)+'</div><div class="dact"><button class="b" onclick="restoreFile(\''+f.retractId+'\')">'+ic('arrow-counter-clockwise')+' Restore</button></div></div>').join('')+'</div>':'<p class="note">Trash is empty. Deleting a file retracts it here, where it can be restored.</p>';
+  h+=trash.length?'<div class="dlist">'+trash.map(x=>'<div class="drow"><span class="dic">'+(x.t==='file'?ic(iconFor(fileKind(x))):ic(x.t==='note'?'note-pencil':'file-text'))+'</span><div class="dnm">'+esc(x.name)+'</div><div class="dmeta">'+esc((D.ws.find(w=>w.id===x.ws)||{}).name||'')+' · '+fmtSize(x.size||0)+'</div><div class="dact"><button class="b" onclick="restoreFile(\''+x.retractId+'\')">'+ic('arrow-counter-clockwise')+' Restore</button></div></div>').join('')+'</div>':'<p class="note">Trash is empty. Deleting a file or document retracts it here, where it can be restored.</p>';
  }else{
-  h+=list.length?'<div class="dlist">'+list.map(f=>'<div class="drow" onclick="U.view=\''+f.hash+'\';render()"><span class="dic">'+ic(iconFor(fileKind(f)))+'</span><div class="dnm">'+esc(f.name)+'</div><div class="dmeta">'+esc((D.ws.find(w=>w.id===f.ws)||{}).name||'')+' · '+fmtSize(f.size)+'</div><div class="dact"><button class="b g" onclick="event.stopPropagation();openFile(\''+f.hash+'\')">'+ic('eye')+'</button></div></div>').join('')+'</div>':'<p class="note">No files yet. Drop files here or upload.</p>';
+  h+=list.length?'<div class="dlist">'+list.map(drow).join('')+'</div>':'<p class="note">No files or documents yet. Drop files here or upload.</p>';
  }
  return h;}
 function restoreFile(id){act('retract',{of:id});U.ftab='trash';render();}
@@ -1104,9 +1119,15 @@ async function saveProfile(){
 const ASK_STOP=new Set(('the a an and or of to in for is are what how many much who where when which list show me my data there with from on do does').split(' '));
 function askToks(q){return String(q||'').toLowerCase().split('').map(c=>/[a-z0-9]/.test(c)?c:' ').join('').split(' ').filter(w=>w.length>1&&!ASK_STOP.has(w));}
 const curChat=()=>U.chats.find(c=>c.id===U.chatId);
-function newChat(){const c={id:uid('c'),title:'',msgs:[]};U.chats.unshift(c);U.chatId=c.id;U.att=[];render();focusId('cq');}
+function chatDesc(id){const out=new Set([id]);let ch=true;while(ch){ch=false;for(const c of U.chats)if(!out.has(c.id)&&c.parentId&&out.has(c.parentId)){out.add(c.id);ch=true;}}return out;}
+function newChat(projectId,parentId){const c={id:uid('c'),title:'',msgs:[],projectId:projectId||null,parentId:parentId||null};U.chats.unshift(c);U.chatId=c.id;U.att=[];render();focusId('cq');}
+function newThread(){const c=curChat();return c?newChat(c.projectId,c.id):newChat();}
 function openChat(id){U.chatId=id;U.att=[];render();focusId('cq');}
-function delChat(id){U.chats=U.chats.filter(c=>c.id!==id);if(U.chatId===id)U.chatId=null;U.att=[];render();}
+function delChat(id){const del=chatDesc(id);U.chats=U.chats.filter(c=>!del.has(c.id));if(del.has(U.chatId))U.chatId=null;U.att=[];render();}
+function newProject(){const n=(prompt('Project name')||'').trim();if(!n)return;U.projects.push({id:uid('p'),name:n});render();}
+function delProject(id){U.projects=U.projects.filter(p=>p.id!==id);for(const c of U.chats)if(c.projectId===id)c.projectId=null;render();}
+function chatItem(c,d){const kids=U.chats.filter(x=>x.parentId===c.id);const on=c.id===U.chatId;let h='<div class="citem'+(on?' on':'')+'" style="padding-left:'+(8+d*16)+'px" onclick="openChat(\''+c.id+'\')"><span class="car">'+(kids.length?'\u25be ':'')+'</span>'+esc(c.title||'New chat')+'</div>';if(kids.length)h+=kids.map(k=>chatItem(k,d+1)).join('');return h;}
+function chatTree(){let h='';for(const c of U.chats.filter(c=>!c.projectId&&!c.parentId))h+=chatItem(c,0);for(const p of U.projects){const cs=U.chats.filter(c=>c.projectId===p.id&&!c.parentId);h+='<div class="cproj">'+ic('folder-open')+' '+esc(p.name)+'<button class="xd" style="margin-left:auto" title="Delete project" onclick="delProject(\''+p.id+'\')">'+ic('x')+'</button></div>'+(cs.length?cs.map(c=>chatItem(c,1)).join(''):'<div class="cempty">empty</div>');}return h;}
 function attachFile(h){if(!U.att.some(a=>a.id===h)){const f=wsFiles(U.ws).find(x=>x.hash===h);if(f)U.att.push({kind:'file',id:h,name:f.name});}render();}
 function attachTable(t){if(!U.att.some(a=>a.id===t)){const x=TB(t);if(x)U.att.push({kind:'table',id:t,name:x.name});}render();}
 function attachDoc(d){if(!U.att.some(a=>a.id===d)){const x=D.docs.find(y=>y.id===d);if(x)U.att.push({kind:'doc',id:d,name:x.title});}render();}
@@ -1346,12 +1367,12 @@ function voice(raw){if(!raw)return '';let t=String(raw);
  t=t.replace(/\n{3,}/g,'\n\n');
  return t.trim();}
 async function ask(q,att,onChunk){const t=String(q||'').trim().toLowerCase();const greet=/^(hi|hello|hey|how are you|whats up|what's up|yo|sup|good (morning|afternoon|evening))\b/.test(t);
- if(!(att&&att.length)&&greet){return {answer:'Doing well \u2014 what can I help you with?',facts:[],system:defRules(q,false),user:q,checks:[],mech:true};}
+ if(!(att&&att.length)&&greet){return {answer:'Doing well \u2014 what can I help you with?',facts:[],system:personaFor(q),user:q,checks:[],mech:true};}
  const mech=mechAnswer(q,att);if(mech){return {answer:mech.answer,facts:[],system:'(mechanical \u2014 no model)',user:q,checks:[{s:mech.steps.join(' \u2192 '),standing:'supported'}],mech:true};}
  const facts=retrieve(q,att);const withData=facts.length>0||(att&&att.length>0);
  const c=curChat();const lastUser=c?c.msgs.filter(m=>m.role==='user').at(-1):null;const lastSys=c?c.msgs.filter(m=>m.role==='sys'&&m.text).at(-1):null;
  const isFollow=!withData&&!att.length&&/^(which one|what about|how about|tell me more|and him|and her|and them|more on|elaborate|expand)\b/i.test(q.trim())&&lastSys;
- const system=withData?defRules(q,true):'You are a helpful assistant. Answer directly and concisely. Do not make up data or describe databases unless asked.';
+ const system=withData?(personaFor(q)+DATA_RULE):'You are a helpful assistant. Answer directly and concisely. Do not make up data or describe databases unless asked.';
  const user=withData?('DATA:\n'+facts.join('\n')+'\n\nQuestion: '+q):(isFollow?'Previous answer: '+lastSys.text+'\n\nFollow-up question: '+q:q);
  // DEF the void: declare the instruction void (done above in defRules)
  let answer=null,err=null,mouth=null,recCount=0;
@@ -1361,13 +1382,13 @@ async function ask(q,att,onChunk){const t=String(q||'').trim().toLowerCase();con
  const checks=gradeAnswer(answer,facts);checks.push({s:'DEF/EVA/REC: '+recCount+' re-ground'+(recCount===1?'':'s'),standing:recCount===0?'supported':'partial'});
  return {answer,mouth,facts,system,user,checks,err:err&&String(err.message||err)};}
 function vChat(){const c=curChat();
- let h='<h1 style="display:flex;align-items:center;gap:10px">Ask<button class="cicon" title="New chat" aria-label="New chat" style="margin-left:auto" onclick="newChat()">'+ic('plus')+'</button></h1>';
- h+='<div class="chats">'+U.chats.map(ch=>'<span class="chip '+(ch.id===U.chatId?'c-ok':'')+'" style="cursor:pointer" onclick="openChat(\''+ch.id+'\')">'+esc(ch.title||'New chat')+' <button class="xd" title="Delete" onclick="event.stopPropagation();delChat(\''+ch.id+'\')">'+ic('x')+'</button></span>').join('')+'</div>';
+ let h='<h1 style="display:flex;align-items:center;gap:6px">Ask'+(c?'<button class="cicon" title="New thread here" aria-label="New thread" style="margin-left:auto" onclick="newThread()">'+ic('chat-text')+'</button>':'')+'<button class="cicon" title="New chat" aria-label="New chat" onclick="newChat()">'+ic('plus')+'</button><button class="cicon" title="New project" aria-label="New project" onclick="newProject()">'+ic('folder-open')+'</button></h1>';
+ h+='<div class="corg">'+(chatTree()||'<div class="cempty">No conversations yet \u2014 start one.</div>')+'</div>';
  const msgs=c?c.msgs.map(m=>'<div class="cmsg '+(m.role==='user'?'cu':'cs')+'"><div class="cbody">'+(m.att&&m.att.length?'<div class="catts">'+m.att.map(a=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+'</span>').join('')+'</div>':'')+(m.pending?'<span class="think">thinking\u2026</span>':md(m.text))+(m.system?'<details class="cground"><summary>prompt</summary><pre class="cp">'+esc('system: '+m.system+'\n\nuser: '+m.user)+'</pre></details>':'')+(m.checks&&m.checks.length?'<details class="cground"><summary>checked (Murch pace + fold falsify)</summary>'+m.checks.map(x=>'<div class="ck '+x.standing+'">'+(x.standing==='supported'?'\u2713':x.standing==='partial'?'~':'\u26a0')+' '+esc(x.s)+'</div>').join('')+'</details>':'')+(m.facts&&m.facts.length?'<details class="cground"><summary>thinking ('+m.facts.length+')</summary>'+esc(m.facts.join('\n')).replace(/\n/g,'<br>')+'</details>':'')+'</div></div>').join(''):'';
  const welcome='<div class="welcome"><div class="bmark">'+ic('chat-circle-text')+'</div><h2>Ask anything</h2><p class="note">A general assistant that can also answer about your files, tables and notes. Every reply is grounded and checked before it is spoken.</p></div>';
  const attrow=U.att.length?'<div class="catts">'+U.att.map((a,i)=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+' <button class="xd" onclick="detach('+i+')">'+ic('x')+'</button></span>').join('')+'</div>':'';
   const input='<div class="cinput">'+(attrow?'<div>'+attrow+'</div>':'')+'<div class="composer"><button class="cicon" title="Attach" aria-label="Attach" onclick="pickAttach()">'+ic('paperclip')+'</button><textarea id="cq" rows="1" placeholder="Ask anything\u2026" onkeydown="cqKey(event)" oninput="cqGrow(this)"></textarea><button class="cicon csend" id="csend" title="Send" aria-label="Send" disabled onclick="askSend()">'+ic('arrow-right')+'</button></div></div>';
- return h+'<div class="cmsgs">'+(c&&c.msgs.length?msgs:welcome)+'</div>'+input;}
+ return '<div class="cchat">'+h+'<div class="cmsgs">'+(c&&c.msgs.length?msgs:welcome)+'</div>'+input+'</div>';}
 function cqGrow(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,200)+'px';const b=document.getElementById('csend');if(b){const on=!!(el.value.trim());b.disabled=!on;b.classList.toggle('on',on);}}
 function cqKey(e){if(e.key==='Enter'&&!e.shiftKey){if(e.isComposing||e.keyCode===229)return;e.preventDefault();askSend();}}
 async function askSend(){const el=document.getElementById('cq');const q=(el&&el.value||'').trim();if(!q)return;el.value='';cqGrow(el);const long=/^(longform|write|report):/i.test(q);const q0=q.replace(/^(longform|write|report):\s*/i,'');let c=curChat();if(!c){c={id:uid('c'),title:q.slice(0,40),msgs:[]};U.chats.unshift(c);U.chatId=c.id;}
