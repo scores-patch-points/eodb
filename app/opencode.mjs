@@ -17,10 +17,10 @@ async function j(r) {
 }
 
 export async function info(config) { try { const r = await fetch(base(config) + '/api/info', { headers: auth(config) }); return r.ok ? r.json() : null; } catch { return null; } }
-export async function createSession(config, { cwd = '.' } = {}) { return j(await fetch(base(config) + '/api/session', { method: 'POST', headers: { ...auth(config), 'content-type': 'application/json' }, body: JSON.stringify({ location: { directory: cwd } }) })); }
+export async function createSession(config, { cwd } = {}) { const body = (cwd && cwd !== '.') ? { location: { directory: cwd } } : {}; const s = await j(await fetch(base(config) + '/api/session', { method: 'POST', headers: { ...auth(config), 'content-type': 'application/json' }, body: JSON.stringify(body) })); return s.data ?? s; }
 export async function prompt(config, sessionId, text) { return j(await fetch(base(config) + '/api/session/' + encodeURIComponent(sessionId) + '/prompt', { method: 'POST', headers: { ...auth(config), 'content-type': 'application/json' }, body: JSON.stringify({ text }) })); }
-export async function listSessions(config) { return j(await fetch(base(config) + '/api/session', { headers: auth(config) })); }
-export async function getSession(config, sessionId) { return j(await fetch(base(config) + '/api/session/' + encodeURIComponent(sessionId), { headers: auth(config) })); }
+export async function listSessions(config) { const s = await j(await fetch(base(config) + '/api/session', { headers: auth(config) })); return s.data ?? s; }
+export async function getSession(config, sessionId) { const s = await j(await fetch(base(config) + '/api/session/' + encodeURIComponent(sessionId), { headers: auth(config) })); return s.data ?? s; }
 
 /** create a short-lived, single-use pairing code (requires an already-authenticated client). Returns { code, expires_in }. */
 export async function pair(config) { return j(await fetch(base(config) + '/api/pair', { method: 'POST', headers: { ...auth(config), 'content-type': 'application/json' }, body: JSON.stringify({}) })); }
