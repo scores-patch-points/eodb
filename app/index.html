@@ -29,9 +29,11 @@ window.__EODB_BOOT={join,file,open,keymodeFor};
 import * as Automation from './automation.mjs';
 import * as Relational from './relational.mjs';
 import * as Project from './project.mjs';
+import * as Opencode from './opencode.mjs';
 window.Automation=Automation;
 window.Relational=Relational;
 window.Project=Project;
+window.Opencode=Opencode;
 </script>
 <script>
 (function(){try{var t=localStorage.getItem('eodb-theme');if(t!=='light'&&t!=='dark')t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
@@ -386,7 +388,7 @@ async function seed(){
  D=fold();
 }
 /* ================= UI state ================= */
-let U={dpanel:null,hist:null,share:false,cur:null,cb:null,focus:null,recmsg:'',open:null,view:null,qr:false,chats:[],collapsed:{},chatId:null,att:[],ws:'w1',sel:'ws',tab:'data',mtab:'match',src:null,adding:null,edit:null,tt:null,virt:null,msg:'',pickCol:null,pickRel:'close',driftOn:false,driftDone:false,drop:'',fpanel:null,fhist:null};
+let U={dpanel:null,hist:null,share:false,cur:null,cb:null,focus:null,recmsg:'',open:null,view:null,qr:false,chats:[],collapsed:{},chatId:null,att:[],ws:'w1',sel:'ws',tab:'data',mtab:'match',src:null,adding:null,edit:null,tt:null,virt:null,msg:'',pickCol:null,pickRel:'close',driftOn:false,driftDone:false,drop:'',fpanel:null,fhist:null,chatBackend:'model',oc:null};
 const W=()=>D.ws.find(w=>w.id===U.ws);
 const TB=id=>D.tb.find(t=>t.id===id);
 const wsTables=w=>D.tb.filter(t=>t.ws===w);
@@ -1156,6 +1158,32 @@ async function boot(){
  ENGINE.onChange(()=>{refreshLog();D=fold();render();storebar();});ENGINE.onStatus(()=>{refreshLog();storebar();});storebar();}
 const DEFAULT_ROUTES=window.EODB_ROUTES||['relay:'+location.origin];
 const EODB_MODEL=window.EODB_MODEL||{url:'http://127.0.0.1:11434',model:'gemma2:2b'};
+/* ---- OpenCode remote: drive this machine's opencode over its HTTP API (Basic auth). url + password + cwd, stored locally. ---- */
+function ocConfig(){try{const s=JSON.parse(localStorage.getItem('eodb-opencode')||'null');return s&&s.url?s:null;}catch{return null;}}
+function ocSet(c){try{localStorage.setItem('eodb-opencode',JSON.stringify(c));}catch{}}
+function ocSave(){const u=(document.getElementById('ocurl')||{}).value,p=(document.getElementById('ocpw')||{}).value,d=(document.getElementById('occwd')||{}).value;
+ if(!u||!p){closeM();return;}ocSet({url:u.trim(),password:p,username:'opencode',cwd:d.trim()||'.'});U.oc=null;U.chatBackend='opencode';closeM();render();}
+function ocPanel(){const c=ocConfig()||{url:'http://127.0.0.1:4096',password:'',cwd:'.'};
+ return '<div class="fh"><h2>Connect to OpenCode</h2><button class="b g" style="margin-left:auto" onclick="closeM()">'+ic('x')+'</button></div>'+
+ '<p class="note">Run <span class="tag">OPENCODE_SERVER_PASSWORD=… opencode serve --cors localhost:8852</span> (or use your background service), then point the app at it. Credentials stay in this browser only.</p>'+
+ '<div class="field"><label class="note">URL</label><input id="ocurl" value="'+esc(c.url)+'" placeholder="http://127.0.0.1:4096"></div>'+
+ '<div class="field"><label class="note">Password</label><input id="ocpw" type="password" value="'+esc(c.password)+'" placeholder="OPENCODE_SERVER_PASSWORD"></div>'+
+ '<div class="field"><label class="note">Working directory</label><input id="occwd" value="'+esc(c.cwd||'.')+'" placeholder="."></div>'+
+ '<button class="b p" onclick="ocSave()">'+ic('check')+' Connect</button>';}
+function openOcPanel(){document.getElementById('sheet').innerHTML=ocPanel();document.getElementById('modal').classList.add('on');}
+/* ---- askOpenCode: one continuing session per chat thread, streamed deltas ---- */
+async function askOpencode(q,c,onChunk){const cfg=ocConfig();if(!cfg)return {answer:'OpenCode is not connected. Use the OpenCode button in the header to connect it.',mech:true,oc:true};
+ const O=window.Opencode;
+ if(!c.ocSession){const s=await O.createSession(cfg,{cwd:cfg.cwd||'.'});c.ocSession=s.id;}
+ try{
+  const r=await O.chat(cfg,c.ocSession,q,{onDelta:(t)=>{const m=c.msgs[c.msgs.length-1];m.text+=t;m.pending=false;if(onChunk)onChunk(t);},onTool:(d)=>{const m=c.msgs[c.msgs.length-1];(m.tools=m.tools||[]).push((d.tool&&(d.tool.name||d.tool.id))||d.name||'tool');}});
+  return {answer:r.text||'(no text — see activity)',mech:true,oc:true,tools:r.tools||[]};
+ }catch(e){return {answer:'OpenCode error: '+String(e&&e.message||e),mech:true,oc:true};}}
+function ocToggle(){const cfg=ocConfig();const on=U.chatBackend==='opencode'&&!!cfg;
+ return '<span style="margin-left:auto;display:flex;gap:5px;align-items:center">'
+  +'<button class="b '+(on?'':'p')+'" onclick="U.chatBackend=\'model\';render()" title="Local model (Ollama)">'+ic('cpu')+' Model</button>'
+  +'<button class="b '+(on?'p':'')+'" onclick="'+(cfg?"U.chatBackend=\'opencode\';render()":'openOcPanel()')+'" title="Drive OpenCode on this machine">'+ic('code')+' OpenCode'+(cfg?'':' · connect')+'</button>'
+  +'</span>';}
 // The persona is FOLDED from Claude's own directives (tone_and_formatting, lists_and_bullets, mistakes, evenhandedness),
 // each folded to one line, and only the rules relevant to the question are sent. The '*' rules are always on.
 const DATA_RULE=" You also have the user's local data. If the question is about it, answer only from the DATA and cite the table or file; if it is not there, say so.";
@@ -1565,8 +1593,8 @@ async function ask(q,att,onChunk){const t=String(q||'').trim().toLowerCase();con
   checks.push({s:trace,standing:(best&&best.bad===0)?'supported':'partial'});
   return {answer,mouth:mouths.length?mouths[0].spoken:null,facts,system,user,checks,err:err&&String(err.message||err)};}
 function vChat(){const c=curChat();
- let h=crumb(ic('chat-circle-text')+' Ask')+'<h1 style="display:flex;align-items:center;gap:6px">Ask'+(c?'<button class="cicon" title="New thread here" aria-label="New thread" style="margin-left:auto" onclick="newThread()">'+ic('chat-text')+'</button>':'')+'</h1>';
- const msgs=c?c.msgs.map(m=>'<div class="cmsg '+(m.role==='user'?'cu':'cs')+'"><div class="cbody">'+(m.att&&m.att.length?'<div class="catts">'+m.att.map(a=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+'</span>').join('')+'</div>':'')+(m.pending?'<span class="think">thinking\u2026</span>':md(m.text))+(m.system?'<details class="cground"><summary>prompt</summary><pre class="cp">'+esc('system: '+m.system+'\n\nuser: '+m.user)+'</pre></details>':'')+(m.checks&&m.checks.length?'<details class="cground"><summary>checked (Murch pace + fold falsify)</summary>'+m.checks.map(x=>'<div class="ck '+x.standing+'">'+(x.standing==='supported'?'\u2713':x.standing==='partial'?'~':'\u26a0')+' '+esc(x.s)+'</div>').join('')+'</details>':'')+(m.facts&&m.facts.length?'<details class="cground"><summary>thinking ('+m.facts.length+')</summary>'+esc(m.facts.join('\n')).replace(/\n/g,'<br>')+'</details>':'')+'</div></div>').join(''):'';
+ let h=crumb(ic('chat-circle-text')+' Ask')+'<h1 style="display:flex;align-items:center;gap:6px">Ask'+(c?'<button class="cicon" title="New thread here" aria-label="New thread" style="margin-left:auto" onclick="newThread()">'+ic('chat-text')+'</button>':ocToggle())+'</h1>';
+ const msgs=c?c.msgs.map(m=>'<div class="cmsg '+(m.role==='user'?'cu':'cs')+'"><div class="cbody">'+(m.att&&m.att.length?'<div class="catts">'+m.att.map(a=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+'</span>').join('')+'</div>':'')+(m.pending?'<span class="think">thinking\u2026</span>':md(m.text))+(m.system?'<details class="cground"><summary>prompt</summary><pre class="cp">'+esc('system: '+m.system+'\n\nuser: '+m.user)+'</pre></details>':'')+(m.checks&&m.checks.length?'<details class="cground"><summary>checked (Murch pace + fold falsify)</summary>'+m.checks.map(x=>'<div class="ck '+x.standing+'">'+(x.standing==='supported'?'\u2713':x.standing==='partial'?'~':'\u26a0')+' '+esc(x.s)+'</div>').join('')+'</details>':'')+(m.facts&&m.facts.length?'<details class="cground"><summary>thinking ('+m.facts.length+')</summary>'+esc(m.facts.join('\n')).replace(/\n/g,'<br>')+'</details>':'')+(m.tools&&m.tools.length?'<details class="cground"><summary>activity ('+m.tools.length+')</summary>'+m.tools.map(t=>'<div class="ck">'+esc(t)+'</div>').join('')+'</details>':'')+'</div></div>').join(''):'';
  const welcome='<div class="welcome"><div class="bmark">'+ic('chat-circle-text')+'</div><h2>Ask anything</h2><p class="note">A general assistant that can also answer about your files, tables and notes. Every reply is grounded and checked before it is spoken.</p></div>';
  const attrow=U.att.length?'<div class="catts">'+U.att.map((a,i)=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+' <button class="xd" onclick="detach('+i+')">'+ic('x')+'</button></span>').join('')+'</div>':'';
   const input='<div class="cinput">'+(attrow?'<div>'+attrow+'</div>':'')+'<div class="composer"><button class="cicon" title="Attach" aria-label="Attach" onclick="pickAttach()">'+ic('paperclip')+'</button><textarea id="cq" rows="1" placeholder="Ask anything\u2026" onkeydown="cqKey(event)" oninput="cqGrow(this)"></textarea><button class="cicon csend" id="csend" title="Send" aria-label="Send" disabled onclick="askSend()">'+ic('arrow-right')+'</button></div></div>';
@@ -1579,8 +1607,9 @@ async function askSend(){const el=document.getElementById('cq');const q=(el&&el.
  c.msgs.push({role:'sys',text:'',pending:true});
  render();focusId('cq');
  const bubble=[...document.querySelectorAll('.cmsg.cs .cbody')].pop();
- const r=long?await longform(q0,att,(tok)=>{const m=c.msgs[c.msgs.length-1];m.text+=tok;m.pending=false;if(bubble)bubble.innerHTML=md(m.text);}):await ask(q0,att,(tok)=>{const m=c.msgs[c.msgs.length-1];m.text+=tok;m.pending=false;if(bubble)bubble.innerHTML=md(m.text);});
- c.msgs[c.msgs.length-1]={role:'sys',text:r.answer,facts:r.facts,system:r.system,user:r.user,checks:r.checks};
+ const onTok=(tok)=>{const m=c.msgs[c.msgs.length-1];m.text+=tok;m.pending=false;if(bubble)bubble.innerHTML=md(m.text);};
+ const r=(U.chatBackend==='opencode'&&ocConfig())?await askOpencode(q,c,onTok):(long?await longform(q0,att,onTok):await ask(q0,att,onTok));
+ c.msgs[c.msgs.length-1]={role:'sys',text:r.answer,facts:r.facts,system:r.system,user:r.user,checks:r.checks,tools:r.tools};
  render();focusId('cq');}
 
 function storebar(){let b=document.getElementById('storebar');const r=ENGINE.report();const bad=r.lastError||r.damaged.length||r.gaps.length;const pending=r.unpersisted;
