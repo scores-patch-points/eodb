@@ -883,6 +883,25 @@ function csvGrid(hash){const f=wsFiles(U.ws).find(x=>x.hash===hash),b=f&&BLOBS.g
   h+=s.rows.slice(0,200).map(r=>'<tr>'+s.cols.map((c,i)=>'<td>'+esc(r[i]==null?'':r[i])+'</td>').join('')+'</tr>').join('');
   h+='</tbody></table></div>'+(s.rows.length>200?'<p class="note">Showing 200 of '+s.rows.length+' rows.</p>':'');
   return h;}catch(e){return '<p class="note">Could not parse this file.</p>';}}
+/* the CSV as a real, editable table: materialized into the log with a deterministic key (idempotent — re-opening never duplicates),
+   so every cell edit is an audited `cell=` entry, exactly like the Tables view. */
+function csvTable(hash){const f=wsFiles(U.ws).find(x=>x.hash===hash),b=f&&BLOBS.get(hash);if(!b)return null;
+ try{const s=parseCsv(new TextDecoder().decode(b.bytes));
+  const seen=new Set(),cols=s.cols.map((c,i)=>{let n=(c==null?'':String(c)).trim()||('Column '+(i+1));let name=n,k=1;while(seen.has(name))name=n+' ('+(++k)+')';seen.add(name);return name;});
+  const rows=s.rows.map(r=>Object.fromEntries(cols.map((c,i)=>[c,r[i]==null?'':String(r[i])])));
+  const r=ENGINE.landTable({name:f.name.replace(/\.[^.]+$/,''),columns:cols,rows,ws:U.ws,key:'csv:'+hash});
+  refreshLog();D=fold();
+  return TB(r.tableId);
+ }catch(e){return null;}}
+function csvEditGrid(hash){const t=csvTable(hash);if(!t)return '<p class="note">Could not parse this file as a table.</p>';
+ const vals=computeTable(t),LIMIT=500,rs=t.r.slice(0,LIMIT);
+ let h='<div class="wrap" style="max-height:70vh"><table><thead><tr>'+t.f.map(f=>'<th>'+ic(ft(f.t).i)+' '+esc(f.n)+'</th>').join('')+'</tr></thead><tbody>';
+ h+=rs.map((r,ri)=>'<tr>'+t.f.map((f,ci)=>{const ed=U.edit&&U.edit.rid===r.id&&U.edit.fid===f.id;
+  if(ed)return '<td><input id="ed" type="text" value="'+esc(r.v[f.id]==null?'':r.v[f.id])+'" onkeydown="if(event.key===\'Enter\')commit(this.value,\''+r.id+'\',\''+f.id+'\',\''+f.t+'\',\''+t.id+'\');if(event.key===\'Escape\'){U.edit=null;render()}" onblur="commit(this.value,\''+r.id+'\',\''+f.id+'\',\''+f.t+'\',\''+t.id+'\')"></td>';
+  return '<td class="cellp" onclick="startEdit(\''+r.id+'\',\''+f.id+'\',\''+f.t+'\',\''+t.id+'\')">'+cell(f,vals[ri][ci])+'</td>';}).join('')+'</tr>').join('');
+ h+='</tbody></table></div>';
+ h+='<p class="note" style="margin-top:8px">Editable — each change is a new signed entry in the log. '+t.r.length+' rows, '+t.f.length+' fields.'+(t.r.length>LIMIT?' Showing '+LIMIT+'.':'')+'</p>';
+ return h;}
 function importTable(hash){const f=wsFiles(U.ws).find(x=>x.hash===hash),b=f&&BLOBS.get(hash);if(!b)return;
  try{const r=ENGINE.importTable({name:f.name.replace(/\.[^.]+$/,''),bytes:b.bytes,type:f.type||'',ws:U.ws});refreshLog();D=fold();U.msg='Imported '+r.rows+' rows, '+r.fields+' fields into "'+f.name+'".';}catch(e){U.msg=String(e.message||e);}
  render();}
@@ -895,11 +914,11 @@ function vFileView(hash){const f=wsFiles(U.ws).find(x=>x.hash===hash);if(!f)retu
  else if(/^audio\//.test(type))body='<div class="vbody"><audio controls src="'+url+'" style="width:100%"></audio></div>';
  else if(/^video\//.test(type))body='<div class="vbody"><video controls src="'+url+'"></video></div>';
  else if(type==='application/pdf')body='<iframe src="'+url+'" title="'+esc(f.name)+'"></iframe>';
- else if(/csv|tab-separated/i.test(type)||/\.(csv|tsv)$/i.test(f.name))body=csvGrid(hash);
+  else if(/csv|tab-separated/i.test(type)||/\.(csv|tsv)$/i.test(f.name))body=csvEditGrid(hash);
  else if(/^text\//.test(type)||/\.(txt|csv|json|md|js|html|xml|log|tsv|css)$/i.test(f.name)){try{body='<pre class="doc">'+esc(new TextDecoder().decode(b.bytes))+'</pre>';}catch(e){body='<p class="note" style="padding:16px">Could not decode as text.</p>';}}
  else body='<div class="vbody"><div class="note">No preview for this type. Use Download.</div></div>';
- const isTabular=/csv|tsv|json/i.test(type)||/\.(csv|tsv|json|jsonl)$/i.test(f.name);
- const act='<div class="vact"><button class="b p" onclick="downloadFile(\''+hash+'\')">'+ic('download-simple')+' Download</button>'+(isTabular?'<button class="b p" onclick="importTable(\''+hash+'\')">'+ic('table')+' Create table</button>':'')+'<button class="b" onclick="shareFile(\''+hash+'\')">'+ic('link')+' Share</button><button class="b" onclick="act(\'retract\',{of:\''+f.eid+'\'});U.view=null;render()">'+ic('trash')+' Delete</button></div>'+(U.msg?'<div class="note" style="margin-top:8px">'+esc(U.msg)+'</div>':'');
+  const isJson=/json/i.test(type)||/\.(json|jsonl)$/i.test(f.name);
+  const act='<div class="vact"><button class="b p" onclick="downloadFile(\''+hash+'\')">'+ic('download-simple')+' Download</button>'+(isJson?'<button class="b p" onclick="importTable(\''+hash+'\')">'+ic('table')+' Create table</button>':'')+'<button class="b" onclick="shareFile(\''+hash+'\')">'+ic('link')+' Share</button><button class="b" onclick="act(\'retract\',{of:\''+f.eid+'\'});U.view=null;render()">'+ic('trash')+' Delete</button></div>'+(U.msg?'<div class="note" style="margin-top:8px">'+esc(U.msg)+'</div>':'');
  return '<div class="vfile">'+head+body+act+'</div>';}
 function vReading(hash){const f=wsFiles(U.ws).find(x=>x.hash===hash);if(!f)return '';const rs=READS(hash);
  let h='<div class="card" style="margin-top:12px"><div class="fh"><b>'+ic(iconFor(rs.length?rs[rs.length-1].kind:'binary'))+' '+esc(f.name)+'</b>'+(rs.length?tierChip(rs[rs.length-1].tier):'')+'<div class="acts"><button class="b" onclick="readAgain(\''+hash+'\')">'+ic('arrows-clockwise')+' Read again with the other setting</button><button class="b g" onclick="U.open=null;render()">'+ic('x')+'</button></div></div>';
