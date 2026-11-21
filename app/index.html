@@ -5,17 +5,19 @@
 <script src="https://cdn.jsdelivr.net/npm/hyperformula@3.5.0/dist/hyperformula.full.min.js"></script>
 <script src="./vendor/qrcode.js"></script>
 <script src="./vendor/falsify.js"></script>
+<script type="module">import * as Murch from './vendor/pacing.js';window.Murch=Murch;</script>
 <script src="./config.js" onerror="void 0"></script>
 <script type="module">
 import {openSpace} from './engine.mjs';
 import {fetchSharedFile} from './net.mjs';
 import * as B from './vendor/pharos/browser-store.mjs';
 const cells=await (await fetch('./vendor/pharos/cells.json')).json();
+const names=await (await fetch('./vendor/node-names.json')).json().catch(()=>[]);
 const log=await B.autoBackend('eodb-log'),blobs=await B.autoBackend('eodb-blobs');
 const join=new URLSearchParams(location.hash.slice(1)).get('join')||undefined;
 const file=new URLSearchParams(location.hash.slice(1)).get('file')||undefined;
 let keymode=null;try{keymode=await log.backend.getMeta('keymode');}catch(e){}
-const open=(opts={})=>{window.__ENGINE_READY=openSpace({name:'eodb',backend:log.backend,blobBackend:blobs.backend,cells,join,...opts}).then(e=>{window.ENGINE=e;window.__NET=()=>({graph:e.networkGraph(),dot:e.networkDot(),mermaid:e.networkMermaid()});if(join)history.replaceState(null,'',location.pathname+location.search);return e;},err=>{window.__ENGINE_ERROR=err;return null;});return window.__ENGINE_READY;};
+const open=(opts={})=>{window.__ENGINE_READY=openSpace({name:'eodb',backend:log.backend,blobBackend:blobs.backend,cells,names,join,...opts}).then(e=>{window.ENGINE=e;window.__NET=()=>({graph:e.networkGraph(),dot:e.networkDot(),mermaid:e.networkMermaid()});if(join)history.replaceState(null,'',location.pathname+location.search);return e;},err=>{window.__ENGINE_ERROR=err;return null;});return window.__ENGINE_READY;};
 import * as KhoraText from './vendor/khora-text.js';window.KhoraText=KhoraText;
 window.PERSONA_RULES=await (await fetch('./persona/rules.json')).json().catch(()=>[]);
 window.__EODB_BOOT={join,file,keymode,open};
@@ -955,9 +957,10 @@ async function showSignIn(){const l=await ENGINE.share({routes:DEFAULT_ROUTES});
 let QR_CACHE=null,QR_FOR=null;async function drawQr(){if(!U.qr)return;const img=document.getElementById('qrimg');if(!img||!window.QRCodeLib)return;
  if(QR_FOR===U.shareLink&&QR_CACHE){if(img.src!==QR_CACHE)img.src=QR_CACHE;return;}
  try{QR_CACHE=await QRCodeLib.toDataURL(U.shareLink,{margin:4,width:720,errorCorrectionLevel:'M'});QR_FOR=U.shareLink;img.src=QR_CACHE;}catch(e){}}
+function nodeLabel(t){const i=String(t||'').lastIndexOf('_');if(i<0)return esc(t);return '<span style="color:#'+t.slice(i+1)+'">'+esc(t.slice(0,i))+'</span><span style="color:var(--mut)">_'+esc(t.slice(i+1))+'</span>';}
 function vProfile(){const r=ENGINE.report(),role=ENGINE.role,peers=ENGINE.peers();
  let h=crumb(ic('user')+' Profile')+'<h1>Profile</h1>';
- h+='<div class="gt">THIS DEVICE</div><div class="card"><div class="fh"><b>'+ic('key')+' '+esc(ENGINE.writer)+'</b>'+(r.unsigned?'<span class="chip c-w">'+r.unsigned+' signing</span>':'<span class="chip c-ok">'+ic('shield-check')+' all signed</span>')+'</div><div class="note" style="margin-top:6px">Signed with Ed25519 through a device-key grant. Stored encrypted on '+esc(r.backend)+'.</div></div>';
+ h+='<div class="gt">THIS DEVICE</div><div class="card"><div class="fh"><b>'+ic('key')+' '+nodeLabel(ENGINE.deviceName)+'</b><span class="tag">'+esc(ENGINE.writer)+'</span>'+(r.unsigned?'<span class="chip c-w">'+r.unsigned+' signing</span>':'<span class="chip c-ok">'+ic('shield-check')+' all signed</span>')+'</div><div class="note" style="margin-top:6px">'+esc(ENGINE.writer)+' is the UUID (Ed25519 key); <b>'+esc(ENGINE.deviceName)+'</b> is its readable name. Signed with Ed25519 through a device-key grant, stored encrypted on '+esc(r.backend)+'.</div></div>';
  h+='<div class="gt">DEVICES</div><div class="card"><div class="note">'+peers.length+' device'+(peers.length===1?'':'s')+' so far in this space.</div></div>';
  h+='<div class="gt">SIGN IN WITH ANOTHER DEVICE</div><div class="card">';
  if(role==='guest')h+='<div class="note">You joined this space. Ask whoever shared it with you for their sign-in code, and open the link it points to.</div>';
@@ -1040,9 +1043,60 @@ function gradeAnswer(answer,facts){const F=window.Falsify;if(!F||!F.falsifyAnswe
  const sources=facts.map((f,i)=>({ref:'src'+i,title:'src'+i,url:'',text:f}));
  let r;try{r=F.falsifyAnswer(sents,sources);}catch(e){return[];}
  const STANDING={corroborated:'supported',held:'supported',contested:'contradicted',weak:'unsupported',unsupported:'unsupported','n/a':'argument'};
- return r.claims.map(c=>{const standing=STANDING[c.verdict]||'unsupported';const w=(c.witnesses||[]).find(x=>x.verdict==='states'||x.verdict==='contradicts');return {s:sents[c.i]||c.i,standing,why:w?w.verdict:''};});}
+ const out=r.claims.map(c=>{const standing=STANDING[c.verdict]||'unsupported';const w=(c.witnesses||[]).find(x=>x.verdict==='states'||x.verdict==='contradicts');return {s:sents[c.i]||c.i,standing,why:w?w.verdict:''};});
+ const pg=window.Murch&&window.Murch.pacingGrade?window.Murch.pacingGrade(answer):null;
+ if(pg){const flat=pg.variance<1.5&&pg.sentences>=3;out.push({s:(flat?'\u26a0 flatline: no blink, no cut (Murch)':'\u2713 '+pg.blinkPoints.length+' blink'+(pg.blinkPoints.length===1?'':'s')+' where the thought turns \u00b7 variance '+pg.variance.toFixed(1)),standing:flat?'unsupported':'supported'});}
+ return out;}
 
+// DEF the void: parse a question into what space it opens (slot, anchor, relation, kind).
+// The void is the shape of what's missing — what must be filled. (void-shape.js::declareVoid, nine operators)
+function defVoid(q){const t=String(q||'').trim().toLowerCase();const toks=askToks(t);
+ let slot='thing',relation=null;
+ if(/\b(how many|count|number of)\b/.test(t))slot='quantity';
+ else if(/\b(who|whom|whose)\b/.test(t))slot='person';
+ else if(/\b(when)\b/.test(t))slot='time';
+ else if(/\b(where)\b/.test(t))slot='place';
+ else if(/\b(why)\b/.test(t))slot='reason';
+ else if(/\b(how)\b/.test(t))slot='manner';
+ else if(/\b(what|which|list|show|find|search)\b/.test(t))slot='thing';
+ const relMatch=t.match(/\b(sum|total|average|avg|mean|max|min)\b/);if(relMatch)relation=relMatch[1];
+ return {slot,anchor:toks,relation,question:t};}
+// EVA against the void: does the ground fill the slot? Returns {filled, answer, steps}.
+function evaAgainst(v,att){const steps=[];const tbs=wsTables(U.ws),fl=wsFiles(U.ws),ds=wsDocs(U.ws);
+ if(v.slot==='quantity'){
+  if(v.relation&&/sum|total/.test(v.relation)){for(const tb of tbs){const fld=tb.f.find(f=>v.anchor.some(x=>f.n.toLowerCase().includes(x)));if(fld){const vals=tb.r.map(r=>Number(r.v[fld.id])).filter(n=>!isNaN(n));if(vals.length){const r=vals.reduce((a,b)=>a+b,0);steps.push('summed '+fld.n+' = '+r+' over '+vals.length+' rows');return {filled:true,answer:'Total '+fld.n+': '+r.toLocaleString()+' (over '+vals.length+' rows).',steps};}}}}
+  if(/table/.test(v.anchor.join(' '))||v.anchor.some(a=>tbs.map(tb=>tb.name.toLowerCase()).includes(a))){for(const tb of tbs){if(v.anchor.some(a=>tb.name.toLowerCase().includes(a))){steps.push('counted '+tb.r.length+' rows');return {filled:true,answer:tb.r.length+' row'+(tb.r.length===1?'':'s')+' in '+tb.name+'.',steps};}}if(!v.anchor.some(a=>tbs.map(tb=>tb.name.toLowerCase()).includes(a))){steps.push('counted '+tbs.length+' tables');return {filled:true,answer:'You have '+tbs.length+' table'+(tbs.length===1?'':'s')+'.',steps};}}
+  if(/file/.test(v.anchor.join(' '))){steps.push('counted '+fl.length+' files');return {filled:true,answer:fl.length+' file'+(fl.length===1?'':'s')+'.',steps};}
+  if(/doc|note/.test(v.anchor.join(' '))){const n=ds.length;steps.push('counted '+n+' docs/notes');return {filled:true,answer:n+' document'+(n===1?'':'s')+' and notes.',steps};}
+ }
+ if(v.slot==='thing'){
+  if(/\b(list|show|what)\b/.test(v.question)){
+   if(/file/.test(v.question)){steps.push('listed '+fl.length+' files');return {filled:true,answer:fl.length?fl.map(f=>f.name+' ('+fmtSize(f.size)+')').join('\n'):'No files yet.',steps};}
+   if(/table/.test(v.question)){steps.push('listed '+tbs.length+' tables');return {filled:true,answer:tbs.length?tbs.map(t=>t.name+' ('+t.r.length+' rows)').join('\n'):'No tables yet.',steps};}
+   if(/doc|note/.test(v.question)){steps.push('listed '+ds.length+' docs/notes');return {filled:true,answer:ds.length?ds.map(d=>d.title).join('\n'):'No docs or notes yet.',steps};}
+   steps.push('listed workspace overview');return {filled:true,answer:W().name+': '+tbs.length+' tables, '+fl.length+' files, '+ds.length+' docs/notes.',steps};
+  }
+  const fm=v.question.match(/\b(search|find|look for|where is|locate)\b\s*(.+)?/);
+  if(fm){const term=fm[2]||'';const toks=askToks(term);const hits=[];
+   for(const tb of tbs)for(const r of tb.r){const vv=JSON.stringify(r.v);if(toks.some(x=>vv.toLowerCase().includes(x)))hits.push(tb.name+': '+tb.f.map(f=>r.v[f.id]).filter(x=>x!=null).join(' | '));}
+   for(const f of fl){if(toks.some(x=>f.name.toLowerCase().includes(x)))hits.push('file: '+f.name);
+    const isCsv=/csv/i.test(f.type)||/\.csv$/i.test(f.name);if(isCsv){const sc=srcOf(f.hash);if(sc){const rows=sc.rows.filter(r=>toks.some(t=>r.join(' ').toLowerCase().includes(t)));if(rows.length)rows.forEach(r=>hits.push('file: '+f.name+' \u2192 '+r.join(' | ')));}}}
+   for(const d of ds)if(toks.some(x=>(d.title+' '+blkText(d)).toLowerCase().includes(x)))hits.push('doc: '+d.title);
+   steps.push('searched '+toks.join(', ')+' \u2192 '+hits.length+' hit'+(hits.length===1?'':'s'));
+   return {filled:true,answer:hits.length?hits.join('\n'):'No matches for "'+term+'".',steps};
+  }
+  const lm=v.question.match(/\b(what is|tell me about|describe)\b\s*(.+)?/);
+  if(lm){const term=lm[2]||'';const toks=askToks(term);
+   for(const tb of tbs)if(toks.some(x=>tb.name.toLowerCase().includes(x))){steps.push('found table '+tb.name);return {filled:true,answer:'table '+tb.name+' ('+tb.r.length+' rows): '+tb.f.map(f=>f.n).join(', '),steps};}
+   for(const f of fl)if(toks.some(x=>f.name.toLowerCase().includes(x))){steps.push('found file '+f.name);return {filled:true,answer:'file '+f.name+' ('+fmtSize(f.size)+', '+f.type+')',steps};}
+   for(const d of ds)if(toks.some(x=>d.title.toLowerCase().includes(x))){steps.push('found doc '+d.title);return {filled:true,answer:'doc "'+d.title+'": '+blkText(d).slice(0,200),steps};}
+  }
+ }
+ return {filled:false,answer:null,steps};}
+function mechAnswer(q,att){const v=defVoid(q);const r=evaAgainst(v,att);if(r.filled)return {answer:r.answer,steps:r.steps,mech:true};return null;}
 async function ask(q,att,onChunk){const t=String(q||'').trim().toLowerCase();const greet=/^(hi|hello|hey|how are you|whats up|what's up|yo|sup|good (morning|afternoon|evening))\b/.test(t);
+ if(!(att&&att.length)&&greet){return {answer:'Doing well \u2014 what can I help you with?',facts:[],system:personaFor(q),user:q,checks:[],mech:true};}
+ const mech=mechAnswer(q,att);if(mech){return {answer:mech.answer,facts:[],system:'(mechanical \u2014 no model)',user:q,checks:[{s:mech.steps.join(' \u2192 '),standing:'supported'}],mech:true};}
  if(!(att&&att.length)&&greet){return {answer:'Doing well \u2014 what can I help you with?',facts:[],system:personaFor(q),user:q};}
  const facts=retrieve(q,att);const withData=facts.length>0||(att&&att.length>0);
  const c=curChat();const lastUser=c?c.msgs.filter(m=>m.role==='user').at(-1):null;const lastSys=c?c.msgs.filter(m=>m.role==='sys'&&m.text).at(-1):null;
@@ -1053,7 +1107,7 @@ async function ask(q,att,onChunk){const t=String(q||'').trim().toLowerCase();con
 function vChat(){const c=curChat();
  let h='<h1 style="display:flex;align-items:center;gap:10px">Ask<button class="b p" style="margin-left:auto" onclick="newChat()">'+ic('plus')+' New chat</button></h1>';
  h+='<div class="chats">'+U.chats.map(ch=>'<span class="chip '+(ch.id===U.chatId?'c-ok':'')+'" style="cursor:pointer" onclick="openChat(\''+ch.id+'\')">'+esc(ch.title||'New chat')+' <button class="xd" title="Delete" onclick="event.stopPropagation();delChat(\''+ch.id+'\')">'+ic('x')+'</button></span>').join('')+'</div>';
- const msgs=c?c.msgs.map(m=>'<div class="cmsg '+(m.role==='user'?'cu':'cs')+'"><div class="cbody">'+(m.att&&m.att.length?'<div class="catts">'+m.att.map(a=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+'</span>').join('')+'</div>':'')+(m.pending?'\u2026':md(m.text))+(m.system?'<details class="cground"><summary>prompt</summary><pre class="cp">'+esc('system: '+m.system+'\n\nuser: '+m.user)+'</pre></details>':'')+(m.checks&&m.checks.length?'<details class="cground"><summary>checked</summary>'+m.checks.map(x=>'<div class="ck '+x.standing+'">'+(x.standing==='supported'?'\u2713':x.standing==='partial'?'~':'\u26a0')+' '+esc(x.s)+'</div>').join('')+'</details>':'')+(m.facts&&m.facts.length?'<details class="cground"><summary>thinking ('+m.facts.length+')</summary>'+esc(m.facts.join('\n')).replace(/\n/g,'<br>')+'</details>':'')+'</div></div>').join(''):'';
+ const msgs=c?c.msgs.map(m=>'<div class="cmsg '+(m.role==='user'?'cu':'cs')+'"><div class="cbody">'+(m.att&&m.att.length?'<div class="catts">'+m.att.map(a=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+'</span>').join('')+'</div>':'')+(m.pending?'\u2026':md(m.text))+(m.system?'<details class="cground"><summary>prompt</summary><pre class="cp">'+esc('system: '+m.system+'\n\nuser: '+m.user)+'</pre></details>':'')+(m.checks&&m.checks.length?'<details class="cground"><summary>checked (Murch pace + fold falsify)</summary>'+m.checks.map(x=>'<div class="ck '+x.standing+'">'+(x.standing==='supported'?'\u2713':x.standing==='partial'?'~':'\u26a0')+' '+esc(x.s)+'</div>').join('')+'</details>':'')+(m.facts&&m.facts.length?'<details class="cground"><summary>thinking ('+m.facts.length+')</summary>'+esc(m.facts.join('\n')).replace(/\n/g,'<br>')+'</details>':'')+'</div></div>').join(''):'';
  const welcome='<div class="welcome"><div class="bmark">'+ic('chat-circle-text')+'</div><h2>Ask anything</h2><p class="note">A general assistant that can also answer about your files, tables and notes. Every reply is grounded and checked before it is spoken.</p></div>';
  const attrow=U.att.length?'<div class="catts">'+U.att.map((a,i)=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+' <button class="xd" onclick="detach('+i+')">'+ic('x')+'</button></span>').join('')+'</div>':'';
  const input='<div class="cinput">'+attrow+'<input id="cq" type="text" placeholder="Ask anything\u2026" onkeydown="if(event.key===\'Enter\')askSend()"><button class="b" title="Attach" onclick="pickAttach()">'+ic('paperclip')+'</button><button class="b p" onclick="askSend()">Send</button></div>';
