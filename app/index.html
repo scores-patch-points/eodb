@@ -1009,7 +1009,29 @@ function retrieve(q,att){const tbs=wsTables(U.ws),fl=wsFiles(U.ws),ds=wsDocs(U.w
  for(const c of cand){if(out.length>=6||total+c.str.length>1400)break;out.push(c.str);total+=c.str.length;}
  if(!out.length)out.push('workspace "'+W().name+'" has '+tbs.length+' tables, '+fl.length+' files, '+ds.length+' docs.');
  return out;}
-async function askModel(user,system){const r=await fetch(EODB_MODEL.url+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:EODB_MODEL.model,stream:false,messages:[{role:'system',content:system||personaFor(user)},{role:'user',content:user}],options:{num_predict:140,temperature:0.2}})});if(!r.ok)throw new Error('local model HTTP '+r.status);const j=await r.json();const a=((j.message&&j.message.content)||'').trim();if(!a)throw new Error('empty model response');return a;}
+function md(s){if(!s)return'';const codes=[];let t=String(s).replace(/```([\s\S]*?)```/g,(m,c)=>{codes.push(c);return '\u0000'+(codes.length-1)+'\u0000';});t=esc(t);
+ t=t.replace(/`([^`]+)`/g,'<code>$1</code>');
+ t=t.replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');t=t.replace(/__([^_]+)__/g,'<b>$1</b>');
+ t=t.replace(/(^|[^*])\*([^*\s][^*]*)\*/g,'$1<i>$2</i>');
+ t=t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+ t=t.replace(/^###\s+(.+)$/gm,'<h4>$1</h4>').replace(/^##\s+(.+)$/gm,'<h3>$1</h3>').replace(/^#\s+(.+)$/gm,'<h2>$1</h2>');
+ t=t.replace(/^&gt;\s?(.+)$/gm,'<blockquote>$1</blockquote>');
+ t=t.replace(/((?:^[-*]\s+.+(?:\n|$))+)/gm,(m)=>{const it=m.trim().split('\n').map(x=>'<li>'+x.replace(/^[-*]\s+/,'')+'</li>').join('');return '<ul>'+it+'</ul>';});
+ t=t.replace(/((?:^\d+\.\s+.+(?:\n|$))+)/gm,(m)=>{const it=m.trim().split('\n').map(x=>'<li>'+x.replace(/^\d+\.\s+/,'')+'</li>').join('');return '<ol>'+it+'</ol>';});
+ t=t.replace(/\u0000(\d+)\u0000/g,(m,i)=>'<pre class="code">'+esc(codes[+i])+'</pre>');
+ return t.replace(/\n/g,'<br>');}
+async function askModel(user,system,onChunk){const r=await fetch(EODB_MODEL.url+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:EODB_MODEL.model,stream:true,messages:[{role:'system',content:system||personaFor(user)},{role:'user',content:user}],options:{temperature:0.2}})});if(!r.ok)throw new Error('local model HTTP '+r.status);const reader=r.body.getReader(),dec=new TextDecoder();let buf='',full='';while(true){const {done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf('\n'))>=0){const line=buf.slice(0,i).trim();buf=buf.slice(i+1);if(!line)continue;let j;try{j=JSON.parse(line);}catch(e){continue;}const t=j.message&&j.message.content;if(t){full+=t;if(onChunk)onChunk(t);}if(j.done){const a=full.trim();if(!a)throw new Error('empty model response');return a;}}}const a=full.trim();if(!a)throw new Error('empty model response');return a;}
+async function longform(topic,att,onChunk){const facts=retrieve(topic,att);const user0='DATA:\n'+facts.join('\n')+'\n\nWrite a short report on: '+topic+'\n\nOutline (3-5 sections, one line each):';
+ let outline=null;try{outline=await askModel(user0,personaFor(topic));}catch(e){outline=null;}
+ const sections=(outline?outline.split(/\n/).map(x=>x.trim()).filter(Boolean):['Overview','Details','Notes']).slice(0,6);
+ const lines=['# '+topic,''];
+ for(const sec of sections){
+  const facts2=facts.slice(0,4);const u='DATA:\n'+facts2.join('\n')+'\n\nWrite one paragraph (3-5 sentences) for the section "'+sec+'". No bullets, no headings.\n\nPARAGRAPH:';
+  let para='';try{para=await askModel(u,personaFor(sec));}catch(e){para='';}
+  if(para)lines.push('## '+sec+'\n'+para+'\n');
+  if(onChunk)onChunk('## '+sec+'\n'+para+'\n\n');
+ }
+ return {answer:lines.join('\n'),facts,system:personaFor(topic),user:user0,checks:[]};}
 function fallbackAnswer(q,facts){return 'Local model not reachable, so here is what the fold says:\n\n'+facts.slice(0,12).join('\n');}
 // The judge is The Fold's own falsifier (fold-chat-falsify-answer.js), bundled with the language priors stubbed
 // (they load from Zenodotus, not here). Verdicts -> standings, exactly as the profile does.
@@ -1020,26 +1042,29 @@ function gradeAnswer(answer,facts){const F=window.Falsify;if(!F||!F.falsifyAnswe
  const STANDING={corroborated:'supported',held:'supported',contested:'contradicted',weak:'unsupported',unsupported:'unsupported','n/a':'argument'};
  return r.claims.map(c=>{const standing=STANDING[c.verdict]||'unsupported';const w=(c.witnesses||[]).find(x=>x.verdict==='states'||x.verdict==='contradicts');return {s:sents[c.i]||c.i,standing,why:w?w.verdict:''};});}
 
-async function ask(q,att){const t=String(q||'').trim().toLowerCase();const greet=/^(hi|hello|hey|how are you|whats up|what's up|yo|sup|good (morning|afternoon|evening))\b/.test(t);
+async function ask(q,att,onChunk){const t=String(q||'').trim().toLowerCase();const greet=/^(hi|hello|hey|how are you|whats up|what's up|yo|sup|good (morning|afternoon|evening))\b/.test(t);
  if(!(att&&att.length)&&greet){return {answer:'Doing well \u2014 what can I help you with?',facts:[],system:personaFor(q),user:q};}
  const facts=retrieve(q,att);const withData=facts.length>0||(att&&att.length>0);
+ const c=curChat();const lastUser=c?c.msgs.filter(m=>m.role==='user').at(-1):null;const lastSys=c?c.msgs.filter(m=>m.role==='sys'&&m.text).at(-1):null;
+ const isFollow=!withData&&!att.length&&/^(which|what|who|and|but|then|so|it|they|he|she|how|why|what about|how about|ok|okay|nice|great|tell me more|more)\b/i.test(q.trim())&&lastSys;
  const system=personaFor(q)+(withData?DATA_RULE:'');
- const user=withData?('DATA:\n'+facts.join('\n')+'\n\nQuestion: '+q):q;
- let answer=null,err=null;try{answer=await askModel(user,system);}catch(e){err=e;}if(!answer)answer=fallbackAnswer(q,facts);const checks=gradeAnswer(answer,facts);return {answer,facts,system,user,checks,err:err&&String(err.message||err)};}
+ const user=withData?('DATA:\n'+facts.join('\n')+'\n\nQuestion: '+q):(isFollow?'Previous answer: '+lastSys.text+'\n\nFollow-up question: '+q:q);
+ let answer=null,err=null;try{answer=await askModel(user,system,onChunk);}catch(e){err=e;}if(!answer)answer=fallbackAnswer(q,facts);const checks=gradeAnswer(answer,facts);return {answer,facts,system,user,checks,err:err&&String(err.message||err)};}
 function vChat(){const c=curChat();
  let h='<h1 style="display:flex;align-items:center;gap:10px">Ask<button class="b p" style="margin-left:auto" onclick="newChat()">'+ic('plus')+' New chat</button></h1>';
  h+='<div class="chats">'+U.chats.map(ch=>'<span class="chip '+(ch.id===U.chatId?'c-ok':'')+'" style="cursor:pointer" onclick="openChat(\''+ch.id+'\')">'+esc(ch.title||'New chat')+' <button class="xd" title="Delete" onclick="event.stopPropagation();delChat(\''+ch.id+'\')">'+ic('x')+'</button></span>').join('')+'</div>';
- const msgs=c?c.msgs.map(m=>'<div class="cmsg '+(m.role==='user'?'cu':'cs')+'"><div class="cbody">'+(m.att&&m.att.length?'<div class="catts">'+m.att.map(a=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+'</span>').join('')+'</div>':'')+(m.pending?'\u2026':esc(m.text).replace(/\n/g,'<br>'))+(m.system?'<details class="cground"><summary>prompt</summary><pre class="cp">'+esc('system: '+m.system+'\n\nuser: '+m.user)+'</pre></details>':'')+(m.checks&&m.checks.length?'<details class="cground"><summary>checked</summary>'+m.checks.map(x=>'<div class="ck '+x.standing+'">'+(x.standing==='supported'?'\u2713':x.standing==='partial'?'~':'\u26a0')+' '+esc(x.s)+'</div>').join('')+'</details>':'')+(m.facts&&m.facts.length?'<details class="cground"><summary>thinking ('+m.facts.length+')</summary>'+esc(m.facts.join('\n')).replace(/\n/g,'<br>')+'</details>':'')+'</div></div>').join(''):'';
+ const msgs=c?c.msgs.map(m=>'<div class="cmsg '+(m.role==='user'?'cu':'cs')+'"><div class="cbody">'+(m.att&&m.att.length?'<div class="catts">'+m.att.map(a=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+'</span>').join('')+'</div>':'')+(m.pending?'\u2026':md(m.text))+(m.system?'<details class="cground"><summary>prompt</summary><pre class="cp">'+esc('system: '+m.system+'\n\nuser: '+m.user)+'</pre></details>':'')+(m.checks&&m.checks.length?'<details class="cground"><summary>checked</summary>'+m.checks.map(x=>'<div class="ck '+x.standing+'">'+(x.standing==='supported'?'\u2713':x.standing==='partial'?'~':'\u26a0')+' '+esc(x.s)+'</div>').join('')+'</details>':'')+(m.facts&&m.facts.length?'<details class="cground"><summary>thinking ('+m.facts.length+')</summary>'+esc(m.facts.join('\n')).replace(/\n/g,'<br>')+'</details>':'')+'</div></div>').join(''):'';
  const welcome='<div class="welcome"><div class="bmark">'+ic('chat-circle-text')+'</div><h2>Ask anything</h2><p class="note">A general assistant that can also answer about your files, tables and notes. Every reply is grounded and checked before it is spoken.</p></div>';
  const attrow=U.att.length?'<div class="catts">'+U.att.map((a,i)=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+' <button class="xd" onclick="detach('+i+')">'+ic('x')+'</button></span>').join('')+'</div>':'';
  const input='<div class="cinput">'+attrow+'<input id="cq" type="text" placeholder="Ask anything\u2026" onkeydown="if(event.key===\'Enter\')askSend()"><button class="b" title="Attach" onclick="pickAttach()">'+ic('paperclip')+'</button><button class="b p" onclick="askSend()">Send</button></div>';
  return h+'<div class="cmsgs">'+(c&&c.msgs.length?msgs:welcome)+'</div>'+input;}
-async function askSend(){const el=document.getElementById('cq');const q=(el&&el.value||'').trim();if(!q)return;el.value='';let c=curChat();if(!c){c={id:uid('c'),title:q.slice(0,40),msgs:[]};U.chats.unshift(c);U.chatId=c.id;}
+async function askSend(){const el=document.getElementById('cq');const q=(el&&el.value||'').trim();if(!q)return;el.value='';const long=/^(longform|write|report):/i.test(q);const q0=q.replace(/^(longform|write|report):\s*/i,'');let c=curChat();if(!c){c={id:uid('c'),title:q.slice(0,40),msgs:[]};U.chats.unshift(c);U.chatId=c.id;}
  const att=U.att.slice();U.att=[];
  c.msgs.push({role:'user',text:q,att});
  c.msgs.push({role:'sys',text:'',pending:true});
  render();focusId('cq');
- const r=await ask(q,att);
+ const bubble=[...document.querySelectorAll('.cmsg.cs .cbody')].pop();
+ const r=long?await longform(q0,att,(tok)=>{const m=c.msgs[c.msgs.length-1];m.text+=tok;m.pending=false;if(bubble)bubble.innerHTML=md(m.text);}):await ask(q0,att,(tok)=>{const m=c.msgs[c.msgs.length-1];m.text+=tok;m.pending=false;if(bubble)bubble.innerHTML=md(m.text);});
  c.msgs[c.msgs.length-1]={role:'sys',text:r.answer,facts:r.facts,system:r.system,user:r.user,checks:r.checks};
  render();focusId('cq');}
 
