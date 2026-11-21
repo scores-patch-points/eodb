@@ -149,39 +149,40 @@ td input{font:inherit;padding:2px 6px;border:1px solid var(--acc);border-radius:
  body.viewing .vfile .vact{padding-bottom:calc(10px + env(safe-area-inset-bottom))}
 }
 
-.chatwrap{display:flex;gap:16px;align-items:flex-start}
-.chatlist{width:230px;flex:none}
-.chatlist .cl{margin-top:10px;display:flex;flex-direction:column;gap:4px}
+.chatwrap{display:flex;height:100vh;gap:0}
+.chatlist{width:260px;flex:none;background:var(--card);border-right:1px solid var(--line);padding:12px 10px;display:flex;flex-direction:column;gap:8px;overflow-y:auto}
+.chathead{display:flex;align-items:center;gap:8px;margin-bottom:2px}
+.chathead .t{font-weight:650;font-size:15px;flex:1}
+.chatlist .newchat{width:100%}
+.chatlist .cl{margin-top:2px;display:flex;flex-direction:column;gap:4px}
 .chatlist .ch{position:relative;padding:9px 30px 9px 10px;border-radius:9px;cursor:pointer;border:1px solid transparent}
-.chatlist .ch:hover{background:#f4f3ee}
+.chatlist .ch:hover{background:var(--accbg)}
 .chatlist .ch.on{background:var(--accbg);border-color:var(--acc)}
 .chatlist .ct{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chatlist .cs{font-size:12px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chdel{position:absolute;right:6px;top:6px;border:0;background:none;color:var(--mut);cursor:pointer;padding:2px;font-size:12px}
 .chdel svg{width:1em;height:1em}
-.chatmain{flex:1;min-width:0;display:flex;flex-direction:column}
-.cmsgs{flex:1;display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
-.cmsg{max-width:86%;display:flex}
+.chatmain{flex:1;min-width:0;display:flex;flex-direction:column;height:100vh;background:var(--bg)}
+.cmsgs{flex:1;overflow:auto;padding:20px;max-width:720px;margin:0 auto;width:100%;display:flex;flex-direction:column;gap:12px}
+.cmsg{max-width:82%;display:flex}
 .cmsg.cu{margin-left:auto}
-.cmsg.cu .cbody{background:var(--acc);color:#fff;border-radius:14px 14px 2px 14px}
-.cmsg.cs .cbody{background:#fff;border:1px solid var(--line);border-radius:14px 14px 14px 2px}
-.cbody{padding:9px 13px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+.cmsg.cu .cbody{background:var(--acc);color:#fff;border-radius:16px 16px 4px 16px}
+.cmsg.cs .cbody{background:var(--card);border:1px solid var(--line);border-radius:16px 16px 16px 4px}
+.cbody{padding:10px 14px;font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
 .cground{font-size:12px;opacity:.75;margin-top:6px;border-top:1px solid rgba(0,0,0,.12);padding-top:6px}
 .catts{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
 .catts .chip{position:relative;padding-right:20px}
-.welcome{text-align:center;color:var(--mut);padding:30px 10px}
-.cinput{display:flex;gap:8px;align-items:flex-end}
+.welcome{text-align:center;color:var(--mut);padding:40px 10px;margin:auto}
+.cinput{display:flex;gap:8px;align-items:flex-end;padding:12px 16px;border-top:1px solid var(--line);max-width:720px;margin:0 auto;width:100%}
 .cinput input{flex:1}
-@media (max-width:800px){
- .chatwrap{flex-direction:column}
- .chatlist{width:100%;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:10px}
- .chatmain{width:100%}
-}
-.it.sub{padding-left:24px;font-size:13.5px}
-.side-foot{margin-top:auto;border-top:1px solid var(--line);padding-top:6px}
 body.chatting aside{display:none}
 body.chatting #tabbar{display:none}
 body.chatting section.main{padding:0}
+@media (max-width:800px){
+ .chatwrap{height:100vh}
+ .chatlist{width:100%;border-right:0;border-bottom:1px solid var(--line);max-height:100%}
+ .chatmain{height:100vh}
+}
 </style><style id="responsive">
 @media (max-width:800px){
  .app{flex-direction:column}
@@ -866,7 +867,7 @@ async function boot(){
  if(ENGINE.role==='founder'){try{U.shareLink=location.origin+location.pathname+'#join='+await ENGINE.share();}catch(e){}}
  ENGINE.onChange(()=>{refreshLog();D=fold();render();storebar();});ENGINE.onStatus(()=>{refreshLog();storebar();});storebar();}
 const DEFAULT_ROUTES=window.EODB_ROUTES||['relay:'+location.origin];
-const EODB_MODEL=window.EODB_MODEL||{url:'http://127.0.0.1:11434',model:'gemma2:2b'};
+const EODB_MODEL=window.EODB_MODEL||{url:'http://127.0.0.1:11434',model:'qwen3:8b'};
 function vShare(){const r=ENGINE.report().share;const up=r&&r.routesUp>0;const conn=r?'<span class="chip '+(up?'c-ok':'c-w')+'">'+(up?'connected':'reconnecting…')+'</span>':'';
  let h='<div class="gt">SHARING</div><div class="card">';
  if(ENGINE.role==='guest')h+='<div class="fh"><b>'+ic('users-three')+' You joined a shared space</b>'+conn+'</div><div class="note" style="margin-top:6px">What you change reaches everyone in the space, and what they change arrives here. '+ENGINE.peers().length+' device'+(ENGINE.peers().length===1?'':'s')+' so far.</div>';
@@ -949,10 +950,12 @@ function retrieve(q,att){const tbs=wsTables(U.ws),fl=wsFiles(U.ws),ds=wsDocs(U.w
  for(const c of cand){if(out.length>=6||total+c.str.length>1400)break;out.push(c.str);total+=c.str.length;}
  if(!out.length)out.push('workspace "'+W().name+'" has '+tbs.length+' tables, '+fl.length+' files, '+ds.length+' docs.');
  return out;}
-function buildPrompt(q,facts){return 'Answer only from DATA. Cite the table or file. If DATA lacks it, say so.\n\nDATA:\n'+facts.join('\n')+'\n\nQUESTION: '+q+'\n\nANSWER:';}
+function buildPrompt(q,facts){return 'You are the user\'s own data, speaking plainly. Answer only from the DATA below, in a short, natural, conversational sentence; cite the table or file each fact comes from. If the DATA does not have the answer, say so.\n\nDATA:\n'+facts.join('\n')+'\n\nQUESTION: '+q+'\n\nANSWER:';}
 async function askModel(prompt){const r=await fetch(EODB_MODEL.url+'/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:EODB_MODEL.model,prompt,stream:false,options:{num_predict:120,temperature:0.2}})});if(!r.ok)throw new Error('local model HTTP '+r.status);const j=await r.json();const a=(j.response||'').trim();if(!a)throw new Error('empty model response');return a;}
 function fallbackAnswer(q,facts){return 'Local model not reachable, so here is what the fold says:\n\n'+facts.slice(0,12).join('\n');}
-async function ask(q,att){const facts=retrieve(q,att);let answer=null,err=null;try{answer=await askModel(buildPrompt(q,facts));}catch(e){err=e;}if(!answer)answer=fallbackAnswer(q,facts);return {answer,facts,err:err&&String(err.message||err)};}
+async function ask(q,att){const t=String(q||'').trim().toLowerCase();const greet=/^(hi|hello|hey|how are you|whats up|what's up|yo|sup|good (morning|afternoon|evening))\b/.test(t);
+ if(!(att&&att.length)&&(greet||!askToks(t).length)){return {answer:'Doing well \u2014 what would you like to know about your data?',facts:[]};}
+ const facts=retrieve(q,att);let answer=null,err=null;try{answer=await askModel(buildPrompt(q,facts));}catch(e){err=e;}if(!answer)answer=fallbackAnswer(q,facts);return {answer,facts,err:err&&String(err.message||err)};}
 function vChat(){const c=curChat();const mob=matchMedia('(max-width:800px)').matches;
  const list='<div class="chatlist"><div class="chathead"><button class="b g" onclick="U.sel=\'ws\';render()" title="Back">&#8249;</button><span class="t">Chats</span></div><button class="b p newchat" onclick="newChat()">'+ic('plus')+' New chat</button><div class="cl">'+U.chats.map(ch=>'<div class="ch '+(ch.id===U.chatId?'on':'')+'" onclick="openChat(\''+ch.id+'\')"><div class="ct">'+esc(ch.title||'New chat')+'</div><div class="cs">'+esc(((ch.msgs[0]||{}).text||'')).slice(0,40)+'</div><button class="chdel" title="Delete" onclick="event.stopPropagation();delChat(\''+ch.id+'\')">'+ic('trash')+'</button></div>').join('')+'</div></div>';
  const msgs=c?c.msgs.map(m=>'<div class="cmsg '+(m.role==='user'?'cu':'cs')+'"><div class="cbody">'+(m.att&&m.att.length?'<div class="catts">'+m.att.map(a=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+'</span>').join('')+'</div>':'')+(m.pending?'\u2026':esc(m.text).replace(/\n/g,'<br>'))+(m.facts&&m.facts.length?'<details class="cground"><summary>grounding ('+m.facts.length+')</summary>'+esc(m.facts.join('\n')).replace(/\n/g,'<br>')+'</details>':'')+'</div></div>').join(''):'';
