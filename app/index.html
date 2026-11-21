@@ -867,7 +867,18 @@ async function boot(){
  if(ENGINE.role==='founder'){try{U.shareLink=location.origin+location.pathname+'#join='+await ENGINE.share();}catch(e){}}
  ENGINE.onChange(()=>{refreshLog();D=fold();render();storebar();});ENGINE.onStatus(()=>{refreshLog();storebar();});storebar();}
 const DEFAULT_ROUTES=window.EODB_ROUTES||['relay:'+location.origin];
-const EODB_MODEL=window.EODB_MODEL||{url:'http://127.0.0.1:11434',model:'qwen3:8b'};
+const EODB_MODEL=window.EODB_MODEL||{url:'http://127.0.0.1:11434',model:'gemma2:2b'};
+// The persona is FOLDED from Claude's own directives (tone_and_formatting, lists_and_bullets, mistakes, evenhandedness),
+// each folded to one line, and only the rules relevant to the question are sent. The '*' rules are always on.
+const PERSONA_RULES=[
+ {tags:['*'],r:'Answer in plain, natural sentences, not bullet points or lists.'},
+ {tags:['*'],r:'Keep it short and casual \u2014 a few sentences, no preamble.'},
+ {tags:['*'],r:'Be warm and direct; never say \"genuinely\", \"honestly\", or \"straightforward\".'},
+ {tags:['*'],r:'No emojis, no asterisks.'},
+ {tags:['*'],r:'Answer only from the DATA given; cite the table or file; if it is not there, say so.'},
+ {tags:['opinion','should','recommend','best','better','versus','vs'],r:'Be evenhanded \u2014 give the tradeoffs, not your own view.'},
+];
+function personaFor(q){const toks=askToks(q);const rules=PERSONA_RULES.filter(ru=>ru.tags.includes('*')||ru.tags.some(t=>toks.includes(t)));return "You are the user's own data. "+rules.map(ru=>ru.r).join(' ');}
 function vShare(){const r=ENGINE.report().share;const up=r&&r.routesUp>0;const conn=r?'<span class="chip '+(up?'c-ok':'c-w')+'">'+(up?'connected':'reconnecting…')+'</span>':'';
  let h='<div class="gt">SHARING</div><div class="card">';
  if(ENGINE.role==='guest')h+='<div class="fh"><b>'+ic('users-three')+' You joined a shared space</b>'+conn+'</div><div class="note" style="margin-top:6px">What you change reaches everyone in the space, and what they change arrives here. '+ENGINE.peers().length+' device'+(ENGINE.peers().length===1?'':'s')+' so far.</div>';
@@ -943,22 +954,21 @@ function retrieve(q,att){const tbs=wsTables(U.ws),fl=wsFiles(U.ws),ds=wsDocs(U.w
   const sc=hit(t.name)+hit(t.f.map(f=>f.n).join(' '))+hit(str);
   if(toks.length===0)add(1,str);else if(sc>0)add(sc,str);
  }
- for(const f of fl){const isCsv=/csv/i.test(f.type)||/\.csv$/i.test(f.name);let cont='';if(isCsv){const sc2=srcOf(f.hash);if(sc2){cont=' ['+sc2.rows.length+' rows: '+sc2.cols.join(', ')+']';if(sc2.rows.length)cont+='\n  '+sc2.rows.slice(0,5).map(r=>r.join(' | ')).join('\n  ');}}const body='file '+f.name+' ('+fmtSize(f.size)+')'+cont;const sc=hit(f.name)+hit(body);if(toks.length===0)add(1,body);else if(sc>0)add(sc,body);}
+ for(const f of fl){const isCsv=/csv/i.test(f.type)||/\.csv$/i.test(f.name);let cont='';if(isCsv){const sc2=srcOf(f.hash);if(sc2){cont=' ['+sc2.rows.length+' rows: '+sc2.cols.join(', ')+']';if(sc2.rows.length)cont+='\n  '+sc2.rows.slice(0,5).map(r=>r.join(' | ')).join('\n  ');}}const body='file '+f.name+' ('+fmtSize(f.size)+')'+cont;const sc=hit(f.name)+hit(body)+(isCsv?2:0);if(toks.length===0)add(1,body);else if(sc>0)add(sc,body);}
  for(const d of ds){const tx=blkText(d);const body=(d.kind==='note'?'note':'doc')+' "'+d.title+'": '+tx.slice(0,140);const sc=hit(d.title)+hit(tx);if(toks.length===0)add(1,body);else if(sc>0)add(sc,body);}
  cand.sort((a,b)=>b.sc-a.sc);
  let out=[],total=0;
  for(const c of cand){if(out.length>=6||total+c.str.length>1400)break;out.push(c.str);total+=c.str.length;}
  if(!out.length)out.push('workspace "'+W().name+'" has '+tbs.length+' tables, '+fl.length+' files, '+ds.length+' docs.');
  return out;}
-function buildPrompt(q,facts){return 'You are the user\'s own data, speaking plainly. Answer only from the DATA below, in a short, natural, conversational sentence; cite the table or file each fact comes from. If the DATA does not have the answer, say so.\n\nDATA:\n'+facts.join('\n')+'\n\nQUESTION: '+q+'\n\nANSWER:';}
-async function askModel(prompt){const r=await fetch(EODB_MODEL.url+'/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:EODB_MODEL.model,prompt,stream:false,options:{num_predict:120,temperature:0.2}})});if(!r.ok)throw new Error('local model HTTP '+r.status);const j=await r.json();const a=(j.response||'').trim();if(!a)throw new Error('empty model response');return a;}
+async function askModel(user,system){const r=await fetch(EODB_MODEL.url+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:EODB_MODEL.model,stream:false,messages:[{role:'system',content:system||personaFor(user)},{role:'user',content:user}],options:{num_predict:140,temperature:0.2}})});if(!r.ok)throw new Error('local model HTTP '+r.status);const j=await r.json();const a=((j.message&&j.message.content)||'').trim();if(!a)throw new Error('empty model response');return a;}
 function fallbackAnswer(q,facts){return 'Local model not reachable, so here is what the fold says:\n\n'+facts.slice(0,12).join('\n');}
 async function ask(q,att){const t=String(q||'').trim().toLowerCase();const greet=/^(hi|hello|hey|how are you|whats up|what's up|yo|sup|good (morning|afternoon|evening))\b/.test(t);
  if(!(att&&att.length)&&(greet||!askToks(t).length)){return {answer:'Doing well \u2014 what would you like to know about your data?',facts:[]};}
- const facts=retrieve(q,att);let answer=null,err=null;try{answer=await askModel(buildPrompt(q,facts));}catch(e){err=e;}if(!answer)answer=fallbackAnswer(q,facts);return {answer,facts,err:err&&String(err.message||err)};}
+ const facts=retrieve(q,att);let answer=null,err=null;try{answer=await askModel('DATA:\n'+facts.join('\n')+'\n\nQuestion: '+q, personaFor(q));}catch(e){err=e;}if(!answer)answer=fallbackAnswer(q,facts);return {answer,facts,err:err&&String(err.message||err)};}
 function vChat(){const c=curChat();const mob=matchMedia('(max-width:800px)').matches;
  const list='<div class="chatlist"><div class="chathead"><button class="b g" onclick="U.sel=\'ws\';render()" title="Back">&#8249;</button><span class="t">Chats</span></div><button class="b p newchat" onclick="newChat()">'+ic('plus')+' New chat</button><div class="cl">'+U.chats.map(ch=>'<div class="ch '+(ch.id===U.chatId?'on':'')+'" onclick="openChat(\''+ch.id+'\')"><div class="ct">'+esc(ch.title||'New chat')+'</div><div class="cs">'+esc(((ch.msgs[0]||{}).text||'')).slice(0,40)+'</div><button class="chdel" title="Delete" onclick="event.stopPropagation();delChat(\''+ch.id+'\')">'+ic('trash')+'</button></div>').join('')+'</div></div>';
- const msgs=c?c.msgs.map(m=>'<div class="cmsg '+(m.role==='user'?'cu':'cs')+'"><div class="cbody">'+(m.att&&m.att.length?'<div class="catts">'+m.att.map(a=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+'</span>').join('')+'</div>':'')+(m.pending?'\u2026':esc(m.text).replace(/\n/g,'<br>'))+(m.facts&&m.facts.length?'<details class="cground"><summary>grounding ('+m.facts.length+')</summary>'+esc(m.facts.join('\n')).replace(/\n/g,'<br>')+'</details>':'')+'</div></div>').join(''):'';
+ const msgs=c?c.msgs.map(m=>'<div class="cmsg '+(m.role==='user'?'cu':'cs')+'"><div class="cbody">'+(m.att&&m.att.length?'<div class="catts">'+m.att.map(a=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+'</span>').join('')+'</div>':'')+(m.pending?'\u2026':esc(m.text).replace(/\n/g,'<br>'))+(m.facts&&m.facts.length?'<details class="cground"><summary>thinking ('+m.facts.length+')</summary>'+esc(m.facts.join('\n')).replace(/\n/g,'<br>')+'</details>':'')+'</div></div>').join(''):'';
  const welcome='<div class="welcome"><div class="bmark">'+ic('chat-circle-text')+'</div><h2>Ask your data</h2><p class="note">Ask in plain language. Attach files, tables or docs to scope an answer. Every question is grounded fresh from the fold.</p></div>';
  const back=mob&&c?'<button class="b" onclick="U.chatId=null;render()">&#8249; Chats</button>':'';
  const attrow=U.att.length?'<div class="catts">'+U.att.map((a,i)=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+' <button class="chdel" onclick="detach('+i+')">'+ic('x')+'</button></span>').join('')+'</div>':'';
