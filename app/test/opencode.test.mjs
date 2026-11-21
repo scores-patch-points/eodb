@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { info, createSession, prompt, chat } from '../opencode.mjs';
+import { info, createSession, prompt, chat, pair, connect } from '../opencode.mjs';
 
 const USER = 'opencode', PASS = 'pw';
 const auth = (req) => req.headers.authorization === 'Basic ' + Buffer.from(`${USER}:${PASS}`).toString('base64');
@@ -12,8 +12,10 @@ function server() {
   let prompted = false;
   const s = http.createServer((req, res) => {
     const u = new URL(req.url, 'http://x');
-    if (!auth(req)) { res.writeHead(401); return res.end(JSON.stringify({ _tag: 'UnauthorizedError', message: 'Authentication required' })); }
+    if (!auth(req) && !u.pathname.startsWith('/auth/connect/')) { res.writeHead(401); return res.end(JSON.stringify({ _tag: 'UnauthorizedError', message: 'Authentication required' })); }
     if (u.pathname === '/api/info') return res.end(JSON.stringify({ version: '2.0.29' }));
+    if (u.pathname === '/api/pair' && req.method === 'POST') return res.end(JSON.stringify({ code: 'abc123', expires_in: 60 }));
+    if (u.pathname === '/auth/connect/abc123' && req.method === 'GET') return res.end(JSON.stringify({ token: 'tok123' }));
     if (u.pathname === '/api/session' && req.method === 'POST') return res.end(JSON.stringify({ id: 'sess1' }));
     if (u.pathname === '/api/session/sess1/prompt' && req.method === 'POST') { prompted = true; res.end(JSON.stringify({})); return; }
     if (u.pathname === '/api/event') {
@@ -62,5 +64,17 @@ test('wrong password is rejected', async () => {
   const s = await server();
   const cfg = { url: `http://127.0.0.1:${s.address().port}`, username: USER, password: 'nope' };
   await assert.rejects(createSession(cfg, { cwd: '.' }), /Authentication required/);
+  await shutdown(s);
+});
+
+test('pair() mints a code (authed); connect() redeems it without auth', async () => {
+  const s = await server();
+  const url = `http://127.0.0.1:${s.address().port}`;
+  const cfg = { url, username: USER, password: PASS };
+  const p = await pair(cfg);
+  assert.equal(p.code, 'abc123');
+  // redeeming needs no password — the code is the credential
+  const r = await connect({ url }, 'abc123');
+  assert.equal(r.token, 'tok123');
   await shutdown(s);
 });

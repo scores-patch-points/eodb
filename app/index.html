@@ -1162,15 +1162,33 @@ const EODB_MODEL=window.EODB_MODEL||{url:'http://127.0.0.1:11434',model:'gemma2:
 function ocConfig(){try{const s=JSON.parse(localStorage.getItem('eodb-opencode')||'null');return s&&s.url?s:null;}catch{return null;}}
 function ocSet(c){try{localStorage.setItem('eodb-opencode',JSON.stringify(c));}catch{}}
 function ocSave(){const u=(document.getElementById('ocurl')||{}).value,p=(document.getElementById('ocpw')||{}).value,d=(document.getElementById('occwd')||{}).value;
- if(!u||!p){closeM();return;}ocSet({url:u.trim(),password:p,username:'opencode',cwd:d.trim()||'.'});U.oc=null;U.chatBackend='opencode';closeM();render();}
+ if(!u){closeM();return;}ocSet({url:u.trim(),password:p,username:'opencode',cwd:d.trim()||'.'});U.chatBackend='opencode';closeM();render();}
 function ocPanel(){const c=ocConfig()||{url:'http://127.0.0.1:4096',password:'',cwd:'.'};
- return '<div class="fh"><h2>Connect to OpenCode</h2><button class="b g" style="margin-left:auto" onclick="closeM()">'+ic('x')+'</button></div>'+
- '<p class="note">Run <span class="tag">OPENCODE_SERVER_PASSWORD=… opencode serve --cors localhost:8852</span> (or use your background service), then point the app at it. Credentials stay in this browser only.</p>'+
- '<div class="field"><label class="note">URL</label><input id="ocurl" value="'+esc(c.url)+'" placeholder="http://127.0.0.1:4096"></div>'+
- '<div class="field"><label class="note">Password</label><input id="ocpw" type="password" value="'+esc(c.password)+'" placeholder="OPENCODE_SERVER_PASSWORD"></div>'+
- '<div class="field"><label class="note">Working directory</label><input id="occwd" value="'+esc(c.cwd||'.')+'" placeholder="."></div>'+
- '<button class="b p" onclick="ocSave()">'+ic('check')+' Connect</button>';}
+ let h='<div class="fh"><h2>Connect to OpenCode</h2><button class="b g" style="margin-left:auto" onclick="closeM()">'+ic('x')+'</button></div>';
+ h+='<p class="note">Run <span class="tag">OPENCODE_SERVER_PASSWORD=… opencode serve --cors localhost:8852</span>, or leave the URL as <span class="tag">/oc</span> to use this app\'s built-in proxy (server holds the password). Credentials stay in this browser only.</p>';
+ h+='<div class="field"><label class="note">URL</label><input id="ocurl" value="'+esc(c.url)+'" placeholder="http://127.0.0.1:4096 or /oc"></div>';
+ h+='<div class="field"><label class="note">Password</label><input id="ocpw" type="password" value="'+esc(c.password)+'" placeholder="OPENCODE_SERVER_PASSWORD (blank for /oc)"></div>';
+ h+='<div class="field"><label class="note">Working directory</label><input id="occwd" value="'+esc(c.cwd||'.')+'" placeholder="."></div>';
+ h+='<button class="b p" onclick="ocSave()">'+ic('check')+' Connect</button>';
+ h+='<div class="gt">Pair this device (no password)</div>';
+ h+='<p class="note">On the connected machine run <span class="tag">opencode pair</span>, or generate a link below, then paste the code or link here.</p>';
+ h+='<div class="mini" style="margin:0"><input id="occod" placeholder="code, or /auth/connect/… link" onkeydown="if(event.key===\'Enter\')ocRedeem()"><button class="b p" onclick="ocRedeem()">'+ic('check')+' Redeem</button></div>';
+ if(c&&c.password)h+='<div style="margin-top:10px"><button class="b" onclick="ocPair()">'+ic('link')+' Generate pairing link for another device</button><div id="ocpair"></div></div>';
+ return h;}
 function openOcPanel(){document.getElementById('sheet').innerHTML=ocPanel();document.getElementById('modal').classList.add('on');}
+async function ocRedeem(){const url=String((document.getElementById('ocurl')||{}).value||'').trim().replace(/\/+$/,''),raw=(document.getElementById('occod')||{}).value||'';
+ const m=/auth\/connect\/([A-Za-z0-9_-]+)/.exec(raw);const code=m?m[1]:String(raw).trim().split('/').filter(Boolean).pop();
+ if(!url||!code)return;
+ try{const r=await window.Opencode.connect({url},code);ocSet({url,password:r.token,username:'opencode',cwd:(document.getElementById('occwd')||{}).value||'.'});U.chatBackend='opencode';closeM();render();}
+ catch(e){alert('Pair failed: '+(e&&e.message||e));}}
+async function ocPair(){const cfg=ocConfig();if(!cfg)return;
+ try{const p=await window.Opencode.pair(cfg);const link=cfg.url.replace(/\/+$/,'')+'/auth/connect/'+p.code;
+  const el=document.getElementById('ocpair');if(!el)return;
+  el.innerHTML='<div class="field" style="margin-top:10px"><label class="note">Pairing link (open on the other device):</label><div class="mono" style="word-break:break-all">'+esc(link)+'</div></div>'+(window.QRCodeLib?'<div style="text-align:center;margin-top:8px"><img id="ocqr" alt="QR" style="width:180px;height:180px;border-radius:8px;border:1px solid var(--line)"></div>':'');
+  if(window.QRCodeLib){try{const img=document.getElementById('ocqr');img.src=await window.QRCodeLib.toDataURL(link,{margin:2,width:480,errorCorrectionLevel:'M'});}catch(e){}}
+ }catch(e){alert('Could not generate a pairing code: '+(e&&e.message||e));}}
+async function ocAutoRedeem(){const m=/#(?:[^&]*&)?oc=([A-Za-z0-9_-]+)/.exec(location.hash);if(!m||ocConfig())return;
+ const cfg={url:ocConfig()?ocConfig().url:'/oc'};try{const r=await window.Opencode.connect({url:cfg.url},m[1]);ocSet({url:cfg.url,password:r.token,username:'opencode',cwd:'.'});U.chatBackend='opencode';history.replaceState(null,'',location.pathname+location.search);}catch(e){}}
 /* ---- askOpenCode: one continuing session per chat thread, streamed deltas ---- */
 async function askOpencode(q,c,onChunk){const cfg=ocConfig();if(!cfg)return {answer:'OpenCode is not connected. Use the OpenCode button in the header to connect it.',mech:true,oc:true};
  const O=window.Opencode;
@@ -1616,6 +1634,6 @@ function storebar(){let b=document.getElementById('storebar');const r=ENGINE.rep
  if(!bad&&!pending){if(b)b.remove();return;}
  if(!b){b=document.createElement('div');b.id='storebar';document.body.appendChild(b);}
  b.className='bad';b.textContent=bad?('Not saved: '+(r.lastError||(r.damaged+' damaged, '+r.gaps+' missing'))+(pending?' ('+pending+' waiting)':'')):('Saving… '+pending+' pending');}
-(async()=>{await boot();render();storebar();setInterval(storebar,1000);})();
+(async()=>{await boot();render();storebar();setInterval(storebar,1000);ocAutoRedeem();})();
 
 </script></body></html>

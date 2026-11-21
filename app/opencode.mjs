@@ -8,7 +8,8 @@
 //   listSessions(config) / getSession(config, id)
 
 const base = (config) => String(config.url || '').replace(/\/+$/, '');
-const auth = (config) => ({ Authorization: 'Basic ' + btoa((config.username || 'opencode') + ':' + (config.password || '')) });
+// A URL that starts with "/" is a same-origin proxy prefix (the app's server injects auth); otherwise send Basic auth ourselves.
+const auth = (config) => config.url && String(config.url).startsWith('/') ? {} : { Authorization: 'Basic ' + btoa((config.username || 'opencode') + ':' + (config.password || '')) };
 
 async function j(r) {
   if (!r.ok) { let m = 'HTTP ' + r.status; try { const b = await r.json(); m = b.message || b.error || m; } catch { /* not json */ } throw new Error('opencode: ' + m); }
@@ -20,6 +21,12 @@ export async function createSession(config, { cwd = '.' } = {}) { return j(await
 export async function prompt(config, sessionId, text) { return j(await fetch(base(config) + '/api/session/' + encodeURIComponent(sessionId) + '/prompt', { method: 'POST', headers: { ...auth(config), 'content-type': 'application/json' }, body: JSON.stringify({ text }) })); }
 export async function listSessions(config) { return j(await fetch(base(config) + '/api/session', { headers: auth(config) })); }
 export async function getSession(config, sessionId) { return j(await fetch(base(config) + '/api/session/' + encodeURIComponent(sessionId), { headers: auth(config) })); }
+
+/** create a short-lived, single-use pairing code (requires an already-authenticated client). Returns { code, expires_in }. */
+export async function pair(config) { return j(await fetch(base(config) + '/api/pair', { method: 'POST', headers: { ...auth(config), 'content-type': 'application/json' }, body: JSON.stringify({}) })); }
+
+/** redeem a pairing code (no auth — the code IS the credential). Returns { token }, used as the password. */
+export async function connect(config, code) { return j(await fetch(base(config) + '/auth/connect/' + encodeURIComponent(code), { headers: { accept: 'application/json' } })); }
 
 /** subscribe to the SSE event stream. onEvent(type, data). Returns an abort() function. */
 export function stream(config, onEvent, onError) {
