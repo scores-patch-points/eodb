@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { openSpace } from './app/engine.mjs';
 import { fsBackend } from './app/fs-backend.mjs';
+import { makeMeasuredLoop } from './app/measured-loop.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const POLL_MS = 150;
@@ -59,8 +60,27 @@ async function spoke(organ, inputKind, outputKind, work) {
 const khora = () => spoke('khora', 'material', 'ground', async (m) => ({ perceived: m.body.text }));
 const janus = () => spoke('janus', 'ground', 'mark', async (g, raw) => {
   const ctx = raw.filter((e) => e.kind === 'ground' || e.kind === 'mark').map((e) => e.body.perceived || e.body.text).join('\n');
-  const mouth = await askModel('Perceived so far:\n' + ctx + '\n\nTake ONE next reasoning step.', 'You are the reasoner. Be additive.');
-  return { text: voice(mouth) };
+  // The mouth (model) is not the voice: it is called as many times as the MEASURE says, not a hand-set count.
+  // Each round reports the surprise (penelope's EVA violations); the measured loop re-grounds while that count decays.
+  const loop = makeMeasuredLoop({ ceiling: 6 });
+  let best = null;
+  let lastV = '';
+  for (let round = 0; ; round++) {
+    const prompt = round === 0
+      ? 'Perceived so far:\n' + ctx + '\n\nTake ONE next reasoning step.'
+      : 'Perceived so far:\n' + ctx + '\n\nYour previous step was rejected (' + lastV + '). Take ONE corrected step.';
+    const mouth = await askModel(prompt, 'You are the reasoner. Be additive.');
+    const eva = evaRules(mouth);
+    const surprise = eva.violations.length;
+    const text = voice(mouth);
+    if (!best || surprise < best.surprise) best = { text, surprise };
+    space.weaveRaw({ cell: 'DEF·Figure', kind: 'act', addr: `act:janus:${g.id.slice(0, 8)}:r${round}`, body: { organ: 'janus', did: 'reason->mark', on: g.id, round, surprise, violations: eva.violations }, of: [g.id] });
+    loop.push(surprise);
+    const v = loop.verdict();
+    if (!v.continue) break;
+    lastV = eva.violations.join(',');
+  }
+  return { text: best.text };
 });
 const penelope = () => spoke('penelope', 'mark', 'voice', async (m) => {
   const eva = evaRules(m.body.text);
