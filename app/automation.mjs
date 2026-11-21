@@ -155,7 +155,8 @@ const RUNNERS = {
     const rows = inputs.rows || [];
     const name = inputs.name || fields.name || 'Imported';
     const ws = fields.ws || 'w1';
-    const r = await ctx.space.landTable({ name, columns, rows, ws, append: !!fields.append });
+    const key = `store:${ctx.automation || 'auto'}:${ws}:${name}`;
+    const r = await ctx.space.landTable({ name, columns, rows, ws, append: !!fields.append, key });
     return { tableId: r.tableId, count: r.rows };
   },
   model: async ({ fields, inputs, ctx }) => {

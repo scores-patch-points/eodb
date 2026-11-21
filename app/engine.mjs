@@ -310,10 +310,28 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
       const t = Tab.parse(bytes, name, type);
       return space.landTable({ name, columns: t.columns, rows: t.rows, ws });
     },
-    /** land already-shaped rows (name-keyed objects) as a table — the ingest primitive. Creates a table, or appends to one of the same name. */
-    landTable({ name = 'Imported', columns, rows = [], ws = 'w1', append = false } = {}) {
+    /** land already-shaped rows (name-keyed objects) as a table — the ingest primitive. Creates a table, or appends to one of the same name.
+     *  With a `key`, ids are CONTENT-DERIVED (idempotent): two devices ingesting the same source produce the same table/field/row ids, so a
+     *  concurrent double-run converges to one canonical table (the fold dedupes by id). */
+    landTable({ name = 'Imported', columns, rows = [], ws = 'w1', append = false, key } = {}) {
       columns = columns && columns.length ? columns : (rows.length ? Object.keys(rows[0]) : []);
       rows = (rows || []).map((r) => (r && typeof r === 'object' && !Array.isArray(r) ? r : { value: r }));
+      if (key) {
+        const h12 = (s) => hex(core.sha256(te.encode(s))).slice(0, 12);
+        const tbId = `t${h12(key)}`;
+        const fieldIds = columns.map((c) => `f${h12(`${key}\u0000${c}`)}`);
+        const existing = Rel.materialize(space.view()).tables.find((t) => t.id === tbId);
+        if (!existing) {
+          space.append('tb+', { id: tbId, ws, name, std: null });
+          for (let i = 0; i < columns.length; i++) space.append('fld+', { tb: tbId, id: fieldIds[i], n: columns[i], t: Tab.inferType(rows.map((r) => r[columns[i]])) });
+        } else {
+          for (let i = 0; i < columns.length; i++) if (!existing.columns.some((c) => c.id === fieldIds[i])) space.append('fld+', { tb: tbId, id: fieldIds[i], n: columns[i], t: Tab.inferType(rows.map((r) => r[columns[i]])) });
+        }
+        const have = new Set(existing ? existing.rows.map((r) => r.id) : []);
+        const rr = rows.map((r) => ({ id: `r${h12(`${key}\u0000${core.canonical(r)}`)}`, v: Object.fromEntries(columns.map((c, i) => [fieldIds[i], r[c]])) })).filter((r) => !have.has(r.id));
+        if (rr.length) space.append('rows+', { tb: tbId, rows: rr, src: { name } });
+        return { tableId: tbId, fields: fieldIds.length, rows: rr.length };
+      }
       if (append) {
         const existing = Rel.materialize(space.view()).tables.find((t) => t.ws === ws && t.name === name);
         if (existing) {
@@ -344,7 +362,7 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
       const runId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
       const claimId = ctx.claimId || null;
       space.append('auto-run+', { id: runId, auto: graph.name || null, trigger: trigger.type, triggerId: ctx.triggerId || null, eventId: ctx.eventId || null, claimId, ts: Date.now() }, claimId ? [claimId] : undefined);
-      const result = await Automation.runAutomation(graph, { space, ...ctx });
+      const result = await Automation.runAutomation(graph, { space, ...ctx, automation: graph.name });
       for (const id of result.order) {
         const r = result.results[id];
         const n = (graph.nodes || []).find((x) => x.id === id) || {};

@@ -69,3 +69,46 @@ test('a later claim that saw an earlier one supersedes it — no conflict, one w
   assert.ok(!sp.conflicts().some((c) => c.addr === 'auto-claim:tr2'), 'a causally-later claim is not a conflict');
   sp.close();
 });
+
+const STORE_GRAPH = { name: 'ingest', nodes: [
+  { id: 't', type: 'text', fields: { text: '[{"vendor":"A"},{"vendor":"B"}]' } },
+  { id: 'j', type: 'json', fields: {} },
+  { id: 'x', type: 'transform', fields: { op: 'flatten' } },
+  { id: 's', type: 'store', fields: { name: 'Items', ws: 'w1' } },
+], edges: [
+  { from: 't', fromPort: 'text', to: 'j', toPort: 'text' },
+  { from: 'j', fromPort: 'data', to: 'x', toPort: 'data' },
+  { from: 'x', fromPort: 'rows', to: 's', toPort: 'rows' },
+] };
+
+test('concurrent double-ingest converges to one canonical table (idempotent ids)', async () => {
+  const r = await relay();
+  const A = await open(mk());
+  A.append('auto+', STORE_GRAPH);
+  A.registerTrigger({ id: 'tr3', auto: 'ingest', type: 'poll', intervalMs: 60_000 });
+  const link = await A.share({ routes: [`relay:${r.url}`] }); await A.settle(); await A.syncOnce();
+  const G = await open(mk(), { join: link });
+
+  await tick(A, {});
+  await tick(G, {});
+  await A.syncOnce(); await G.syncOnce(); await A.syncOnce(); await G.syncOnce();
+
+  assert.equal(A.materialize().tables.filter((t) => t.name === 'Items').length, 1, 'one canonical table, not two');
+  assert.deepEqual(A.sql('SELECT vendor FROM Items ORDER BY vendor').rows.map((x) => x.vendor), ['A', 'B'], 'two canonical rows, not four');
+  assert.deepEqual(G.sql('SELECT vendor FROM Items ORDER BY vendor').rows.map((x) => x.vendor), ['A', 'B'], 'the guest converges to the same rows');
+});
+
+test('landTable with a key is idempotent: repeat calls add nothing, new rows append', async () => {
+  const sp = await open(mk());
+  const rows = [{ vendor: 'A' }, { vendor: 'B' }];
+  const key = 'store:x:w1:Items';
+  const r1 = await sp.landTable({ name: 'Items', columns: ['vendor'], rows, ws: 'w1', key });
+  const r2 = await sp.landTable({ name: 'Items', columns: ['vendor'], rows, ws: 'w1', key });
+  assert.equal(r1.tableId, r2.tableId, 'same deterministic table id');
+  assert.equal(r2.rows, 0, 're-ingesting identical rows adds nothing');
+  assert.deepEqual(sp.sql('SELECT vendor FROM Items').rows.map((x) => x.vendor), ['A', 'B']);
+  const r3 = await sp.landTable({ name: 'Items', columns: ['vendor'], rows: [{ vendor: 'C' }], ws: 'w1', key });
+  assert.equal(r3.rows, 1, 'a new row is appended');
+  assert.deepEqual(sp.sql('SELECT vendor FROM Items ORDER BY vendor').rows.map((x) => x.vendor), ['A', 'B', 'C']);
+  sp.close();
+});
