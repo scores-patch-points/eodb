@@ -1004,17 +1004,43 @@ let QR_CACHE=null,QR_FOR=null;async function drawQr(){if(!U.qr)return;const img=
  try{QR_CACHE=await QRCodeLib.toDataURL(U.shareLink,{margin:4,width:720,errorCorrectionLevel:'M'});QR_FOR=U.shareLink;img.src=QR_CACHE;}catch(e){}}
 function contrastOn(hex){const r=parseInt(hex.slice(0,2),16),g=parseInt(hex.slice(2,4),16),b=parseInt(hex.slice(4,6),16);return (0.2126*r+0.7152*g+0.0722*b)/255>0.5?'#141416':'#ffffff';}
 function nodeLabel(t){const i=String(t||'').lastIndexOf('_');if(i<0)return '<span class="nchip" title="'+esc(t)+'" style="background:var(--s2);color:var(--ink)">'+esc(t)+'</span>';const word=t.slice(0,i),hex=t.slice(i+1);return '<span class="nchip" title="'+esc(t)+'" style="background:#'+hex+';color:'+contrastOn(hex)+'">'+esc(word)+'</span>';}
-function vProfile(){const r=ENGINE.report(),role=ENGINE.role,peers=ENGINE.peers();
+function vProfile(){const r=ENGINE.report(),role=ENGINE.role,peers=ENGINE.peers(),p=ENGINE.profile();
  let h=crumb(ic('user')+' Profile')+'<h1>Profile</h1>';
- h+='<div class="gt">THIS DEVICE</div><div class="card"><div class="fh"><b>'+ic('key')+' '+nodeLabel(ENGINE.deviceName)+'</b><span class="tag">'+esc(ENGINE.writer)+'</span>'+(r.unsigned?'<span class="chip c-w">'+r.unsigned+' signing</span>':'<span class="chip c-ok">'+ic('shield-check')+' all signed</span>')+'</div><div class="note" style="margin-top:6px">'+esc(ENGINE.writer)+' is the UUID (Ed25519 key); <b>'+esc(ENGINE.deviceName)+'</b> is its readable name. Signed with Ed25519 through a device-key grant, stored encrypted on '+esc(r.backend)+'.</div></div>';
+ h+='<div class="gt">YOU</div><div class="card"><div style="display:flex;gap:14px;align-items:center">';
+ h+=(p.photo?'<img src="'+esc(p.photo)+'" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:1px solid var(--line)">':'<div style="width:64px;height:64px;border-radius:50%;background:var(--s2);display:flex;align-items:center;justify-content:center;color:var(--mut)">'+ic('user')+'</div>');
+ h+='<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:18px">'+(p.username?esc(p.username):nodeLabel(ENGINE.deviceName))+'</div><div class="note">'+nodeLabel(ENGINE.deviceName)+' · <span class="tag">'+esc(ENGINE.writer)+'</span></div>'+(p.bio?'<div class="note" style="margin-top:4px">'+esc(p.bio)+'</div>':'')+'</div>';
+ h+='<button class="b" onclick="openProfileEdit()">'+ic('note-pencil')+' Edit profile</button>';
+ h+='</div></div>';
+ h+='<div class="gt">THIS DEVICE</div><div class="card"><div class="fh"><b>'+ic('key')+' '+nodeLabel(ENGINE.deviceName)+'</b><span class="tag">'+esc(ENGINE.writer)+'</span>'+(r.unsigned?'<span class="chip c-w">'+r.unsigned+' signing</span>':'<span class="chip c-ok">'+ic('shield-check')+' all signed</span>')+'</div><div class="note" style="margin-top:6px">Signed with Ed25519 through a device-key grant, stored encrypted on '+esc(r.backend)+'.</div></div>';
  h+='<div class="gt">DEVICES</div><div class="card"><div class="note">'+peers.length+' device'+(peers.length===1?'':'s')+' so far in this space.</div></div>';
  h+='<div class="gt">SIGN IN WITH ANOTHER DEVICE</div><div class="card">';
  if(role==='guest')h+='<div class="note">You joined this space. Ask whoever shared it with you for their sign-in code, and open the link it points to.</div>';
  else if(U.qr)h+='<div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap"><img id="qrimg" alt="Sign-in code" style="width:300px;height:300px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:8px"><div style="flex:1;min-width:260px"><div class="note">Point your other device\'s camera at the code, or open this link there:</div><input readonly style="width:100%;margin-top:8px" value="'+esc(U.shareLink)+'" onclick="this.select()"><div class="fh" style="margin-top:8px"><button class="b p" onclick="copyLink()">Copy link</button><button class="b" onclick="sendSpace()">'+ic('envelope')+' Send</button><button class="b" onclick="stopSharing()">Stop sharing</button></div></div></div>';
  else h+='<div class="note" style="margin:0 0 10px">Show a code you can scan with another device to open this space there. Everything is encrypted before it leaves this device.</div><button class="b p" onclick="showSignIn()">'+ic('link')+' Show sign-in code</button>';
- h+='</div>';return h;}
+  h+='</div>';return h;}
+function openSheet(html){document.getElementById('sheet').innerHTML=html;document.getElementById('modal').classList.add('on');}
+function openProfileEdit(){
+ const p=ENGINE.profile();window.__pimg=p.photo||'';
+ openSheet('<div class="fh" style="margin-bottom:10px"><h2>Edit profile</h2><button class="b g" style="margin-left:auto" onclick="closeM()">'+ic('x')+'</button></div>'
+ +'<div class="note" style="margin:0 0 10px">Username, photo and bio are entries in the log — they sync to every device in your space.</div>'
+ +'<div style="display:flex;gap:14px;align-items:flex-start">'
+ +'<div style="width:96px"><img id="pimg" src="'+(p.photo?esc(p.photo):'')+'" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:1px solid var(--line)'+(p.photo?'':'display:none')+'"><input type="file" id="pfile" accept="image/*" onchange="pickedPhoto()" style="margin-top:8px;font-size:12px"></div>'
+ +'<div style="flex:1;min-width:0"><label class="note">Username</label><input type="text" id="puser" value="'+esc(p.username)+'" placeholder="e.g. alice" style="margin-bottom:10px"><label class="note">Bio</label><textarea id="pbio" style="width:100%;min-height:72px" placeholder="A line about you">'+esc(p.bio)+'</textarea></div>'
+ +'</div><div class="fh" style="margin-top:12px"><button class="b p" onclick="saveProfile()">Save</button><button class="b" onclick="closeM()">Cancel</button></div>');
+}
+function pickedPhoto(){
+ const f=document.getElementById('pfile').files[0];if(!f)return;
+ const img=new Image(),url=URL.createObjectURL(f);
+ img.onload=()=>{const s=256,c=document.createElement('canvas'),k=Math.min(1,s/Math.max(img.width,img.height));c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);c.getContext('2d').drawImage(img,0,0,c.width,c.height);window.__pimg=c.toDataURL('image/jpeg',0.85);URL.revokeObjectURL(url);const el=document.getElementById('pimg');el.src=window.__pimg;el.style.display='block';};
+ img.src=url;
+}
+async function saveProfile(){
+ const u=document.getElementById('puser').value.trim(),b=document.getElementById('pbio').value.trim();
+ await ENGINE.setProfile({username:u,bio:b,photo:window.__pimg||''});
+ closeM();render();
+}
 const ASK_STOP=new Set(('the a an and or of to in for is are what how many much who where when which list show me my data there with from on do does').split(' '));
-function askToks(q){return String(q||'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').split(/\s+/).filter(w=>w.length>1&&!ASK_STOP.has(w));}
+function askToks(q){return String(q||'').toLowerCase().split('').map(c=>/[a-z0-9]/.test(c)?c:' ').join('').split(' ').filter(w=>w.length>1&&!ASK_STOP.has(w));}
 const curChat=()=>U.chats.find(c=>c.id===U.chatId);
 function newChat(){const c={id:uid('c'),title:'',msgs:[]};U.chats.unshift(c);U.chatId=c.id;U.att=[];render();focusId('cq');}
 function openChat(id){U.chatId=id;U.att=[];render();focusId('cq');}
@@ -1056,7 +1082,7 @@ function retrieve(q,att){const tbs=wsTables(U.ws),fl=wsFiles(U.ws),ds=wsDocs(U.w
  cand.sort((a,b)=>b.sc-a.sc);
  let out=[],total=0;
  for(const c of cand){if(out.length>=6||total+c.str.length>1400)break;out.push(c.str);total+=c.str.length;}
- if(!out.length)out.push('workspace "'+W().name+'" has '+tbs.length+' tables, '+fl.length+' files, '+ds.length+' docs.');
+ if(!out.length&&toks.length===0)out.push('workspace "'+W().name+'" has '+tbs.length+' tables, '+fl.length+' files, '+ds.length+' docs.');
  return out;}
 function md(s){if(!s)return'';const codes=[];let t=String(s).replace(/```([\s\S]*?)```/g,(m,c)=>{codes.push(c);return '\u0000'+(codes.length-1)+'\u0000';});t=esc(t);
  t=t.replace(/`([^`]+)`/g,'<code>$1</code>');
@@ -1091,41 +1117,48 @@ function gradeAnswer(answer,facts){const F=window.Falsify;if(!F||!F.falsifyAnswe
 // The void is the shape of what's missing — what must be filled. (void-shape.js::declareVoid, nine operators)
 function defVoid(q){const t=String(q||'').trim().toLowerCase();const toks=askToks(t);
  let slot='thing',relation=null;
- if(/\b(how many|count|number of)\b/.test(t))slot='quantity';
- else if(/\b(who|whom|whose)\b/.test(t))slot='person';
- else if(/\b(when)\b/.test(t))slot='time';
- else if(/\b(where)\b/.test(t))slot='place';
- else if(/\b(why)\b/.test(t))slot='reason';
- else if(/\b(how)\b/.test(t))slot='manner';
- else if(/\b(what|which|list|show|find|search)\b/.test(t))slot='thing';
- const relMatch=t.match(/\b(sum|total|average|avg|mean|max|min)\b/);if(relMatch)relation=relMatch[1];
+ const has=w=>t.split(' ').includes(w);
+ if(has('how')&&has('many'))slot='quantity';
+ else if(has('count')||has('number'))slot='quantity';
+ else if(has('who')||has('whom')||has('whose'))slot='person';
+ else if(has('when'))slot='time';
+ else if(has('where'))slot='place';
+ else if(has('why'))slot='reason';
+ else if(has('how'))slot='manner';
+ else if(has('what')||has('which')||has('list')||has('show')||has('find')||has('search'))slot='thing';
+ const rels=['sum','total','average','avg','mean','max','min'];for(const r of rels)if(has(r)){relation=r;break;}
  return {slot,anchor:toks,relation,question:t};}
 // EVA against the void: does the ground fill the slot? Returns {filled, answer, steps}.
 function evaAgainst(v,att){const steps=[];const tbs=wsTables(U.ws),fl=wsFiles(U.ws),ds=wsDocs(U.ws);
  if(v.slot==='quantity'){
-  if(v.relation&&/sum|total/.test(v.relation)){for(const tb of tbs){const fld=tb.f.find(f=>v.anchor.some(x=>f.n.toLowerCase().includes(x)));if(fld){const vals=tb.r.map(r=>Number(r.v[fld.id])).filter(n=>!isNaN(n));if(vals.length){const r=vals.reduce((a,b)=>a+b,0);steps.push('summed '+fld.n+' = '+r+' over '+vals.length+' rows');return {filled:true,answer:'Total '+fld.n+': '+r.toLocaleString()+' (over '+vals.length+' rows).',steps};}}}}
-  if(/table/.test(v.anchor.join(' '))||v.anchor.some(a=>tbs.map(tb=>tb.name.toLowerCase()).includes(a))){for(const tb of tbs){if(v.anchor.some(a=>tb.name.toLowerCase().includes(a))){steps.push('counted '+tb.r.length+' rows');return {filled:true,answer:tb.r.length+' row'+(tb.r.length===1?'':'s')+' in '+tb.name+'.',steps};}}if(!v.anchor.some(a=>tbs.map(tb=>tb.name.toLowerCase()).includes(a))){steps.push('counted '+tbs.length+' tables');return {filled:true,answer:'You have '+tbs.length+' table'+(tbs.length===1?'':'s')+'.',steps};}}
-  if(/file/.test(v.anchor.join(' '))){steps.push('counted '+fl.length+' files');return {filled:true,answer:fl.length+' file'+(fl.length===1?'':'s')+'.',steps};}
-  if(/doc|note/.test(v.anchor.join(' '))){const n=ds.length;steps.push('counted '+n+' docs/notes');return {filled:true,answer:n+' document'+(n===1?'':'s')+' and notes.',steps};}
+  const hasW=w=>v.anchor.includes(w);const hasRel=rel=>v.relation===rel;
+  if(v.relation&&(v.relation==='sum'||v.relation==='total')){for(const tb of tbs){const fld=tb.f.find(f=>v.anchor.some(x=>f.n.toLowerCase().includes(x)));if(fld){const vals=tb.r.map(r=>Number(r.v[fld.id])).filter(n=>!isNaN(n));if(vals.length){const r=vals.reduce((a,b)=>a+b,0);steps.push('summed '+fld.n+' = '+r+' over '+vals.length+' rows');return {filled:true,answer:'Total '+fld.n+': '+r.toLocaleString()+' (over '+vals.length+' rows).',steps};}}}}
+  if(v.anchor.includes('table')||v.anchor.some(a=>tbs.map(tb=>tb.name.toLowerCase()).includes(a))){for(const tb of tbs){if(v.anchor.some(a=>tb.name.toLowerCase().includes(a))){steps.push('counted '+tb.r.length+' rows');return {filled:true,answer:tb.r.length+' row'+(tb.r.length===1?'':'s')+' in '+tb.name+'.',steps};}}if(!v.anchor.some(a=>tbs.map(tb=>tb.name.toLowerCase()).includes(a))){steps.push('counted '+tbs.length+' tables');return {filled:true,answer:'You have '+tbs.length+' table'+(tbs.length===1?'':'s')+'.',steps};}}
+  if(v.anchor.includes('file')){steps.push('counted '+fl.length+' files');return {filled:true,answer:fl.length+' file'+(fl.length===1?'':'s')+'.',steps};}
+  if(v.anchor.includes('doc')||v.anchor.includes('note')){const n=ds.length;steps.push('counted '+n+' docs/notes');return {filled:true,answer:n+' document'+(n===1?'':'s')+' and notes.',steps};}
  }
  if(v.slot==='thing'){
-  if(/\b(list|show|what)\b/.test(v.question)){
-   if(/file/.test(v.question)){steps.push('listed '+fl.length+' files');return {filled:true,answer:fl.length?fl.map(f=>f.name+' ('+fmtSize(f.size)+')').join('\n'):'No files yet.',steps};}
-   if(/table/.test(v.question)){steps.push('listed '+tbs.length+' tables');return {filled:true,answer:tbs.length?tbs.map(t=>t.name+' ('+t.r.length+' rows)').join('\n'):'No tables yet.',steps};}
-   if(/doc|note/.test(v.question)){steps.push('listed '+ds.length+' docs/notes');return {filled:true,answer:ds.length?ds.map(d=>d.title).join('\n'):'No docs or notes yet.',steps};}
-   return null;
+  const w=t=>v.question.split(' ').includes(t);
+  // search/list
+  if(w('list')||w('show')||w('what')){
+   if(w('file')){steps.push('listed '+fl.length+' files');return {filled:true,answer:fl.length?fl.map(f=>f.name+' ('+fmtSize(f.size)+')').join('\n'):'No files yet.',steps};}
+   if(w('table')){steps.push('listed '+tbs.length+' tables');return {filled:true,answer:tbs.length?tbs.map(t=>t.name+' ('+t.r.length+' rows)').join('\n'):'No tables yet.',steps};}
+   if(w('doc')||w('note')){steps.push('listed '+ds.length+' docs/notes');return {filled:true,answer:ds.length?ds.map(d=>d.title).join('\n'):'No docs or notes yet.',steps};}
+   steps.push('listed workspace overview');return {filled:true,answer:W().name+': '+tbs.length+' tables, '+fl.length+' files, '+ds.length+' docs/notes.',steps};
   }
-  const fm=v.question.match(/\b(search|find|look for|where is|locate)\b\s*(.+)?/);
-  if(fm){const term=fm[2]||'';const toks=askToks(term);const hits=[];
+  // search/find
+  const searchWords=['search','find','look','locate'];const isSearch=searchWords.some(x=>w(x));
+  if(isSearch){const term=v.anchor.join(' ');const toks=askToks(term);const hits=[];
    for(const tb of tbs)for(const r of tb.r){const vv=JSON.stringify(r.v);if(toks.some(x=>vv.toLowerCase().includes(x)))hits.push(tb.name+': '+tb.f.map(f=>r.v[f.id]).filter(x=>x!=null).join(' | '));}
    for(const f of fl){if(toks.some(x=>f.name.toLowerCase().includes(x)))hits.push('file: '+f.name);
-    const isCsv=/csv/i.test(f.type)||/\.csv$/i.test(f.name);if(isCsv){const sc=srcOf(f.hash);if(sc){const rows=sc.rows.filter(r=>toks.some(t=>r.join(' ').toLowerCase().includes(t)));if(rows.length)rows.forEach(r=>hits.push('file: '+f.name+' \u2192 '+r.join(' | ')));}}}
+    const isCsv=f.type.toLowerCase().includes('csv')||f.name.toLowerCase().endsWith('.csv');if(isCsv){const sc=srcOf(f.hash);if(sc){const rows=sc.rows.filter(r=>toks.some(t=>r.join(' ').toLowerCase().includes(t)));if(rows.length)rows.forEach(r=>hits.push('file: '+f.name+' \u2192 '+r.join(' | ')));}}}
    for(const d of ds)if(toks.some(x=>(d.title+' '+blkText(d)).toLowerCase().includes(x)))hits.push('doc: '+d.title);
    steps.push('searched '+toks.join(', ')+' \u2192 '+hits.length+' hit'+(hits.length===1?'':'s'));
    return {filled:true,answer:hits.length?hits.join('\n'):'No matches for "'+term+'".',steps};
   }
-  const lm=v.question.match(/\b(what is|tell me about|describe)\b\s*(.+)?/);
-  if(lm){const term=lm[2]||'';const toks=askToks(term);
+  // lookup
+  const lookupWords=['what','tell','describe'];const isLookup=lookupWords.some(x=>w(x));
+  if(isLookup){const term=v.anchor.join(' ');const toks=askToks(term);
    for(const tb of tbs)if(toks.some(x=>tb.name.toLowerCase().includes(x))){steps.push('found table '+tb.name);return {filled:true,answer:'table '+tb.name+' ('+tb.r.length+' rows): '+tb.f.map(f=>f.n).join(', '),steps};}
    for(const f of fl)if(toks.some(x=>f.name.toLowerCase().includes(x))){steps.push('found file '+f.name);return {filled:true,answer:'file '+f.name+' ('+fmtSize(f.size)+', '+f.type+')',steps};}
    for(const d of ds)if(toks.some(x=>d.title.toLowerCase().includes(x))){steps.push('found doc '+d.title);return {filled:true,answer:'doc "'+d.title+'": '+blkText(d).slice(0,200),steps};}

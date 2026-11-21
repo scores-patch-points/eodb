@@ -8,15 +8,16 @@
 // The model: a space hub, the devices in it (self + peers), and the transports each device reaches. Self->route edges carry
 // the real health (up/down); peer->route edges are inferred (routes are announced in the log, so members are presumed to
 // share them) and are drawn dashed.
-export function networkGraph({ name = 'eodb', self, peers = [], routes = [] } = {}) {
+export function networkGraph({ name = 'eodb', self, selfName, peers = [], routes = [], names = {} } = {}) {
   const nodes = [], edges = [];
   const dev = (w) => `device:${w}`;
   const rid = (r) => `route:${r.uri}`;
   const selfId = dev(self);
+  const label = (w) => names[w] || w;   // the human-readable name, else the raw id
 
   nodes.push({ id: `space:${name}`, kind: 'space', label: name });
-  nodes.push({ id: selfId, kind: 'device', label: self, self: true });
-  for (const p of peers) if (p !== self && !nodes.some((n) => n.id === dev(p))) nodes.push({ id: dev(p), kind: 'device', label: p });
+  nodes.push({ id: selfId, kind: 'device', label: label(self), uuid: self, self: true });
+  for (const p of peers) if (p !== self && !nodes.some((n) => n.id === dev(p))) nodes.push({ id: dev(p), kind: 'device', label: label(p), uuid: p });
   for (const r of routes) nodes.push({ id: rid(r), kind: 'transport', label: shortRoute(r), scheme: r.scheme, ok: r.ok });
 
   edges.push({ from: selfId, to: `space:${name}`, kind: 'member', label: name });

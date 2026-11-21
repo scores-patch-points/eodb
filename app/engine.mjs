@@ -113,6 +113,7 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
     const granted = core.fold(h).entries.some((e) => e.kind === 'capability' && e.body && e.body.subject === dev.pub);
     if (!granted) A.grantCap(h, root, { subject: dev.pub, writer: `${devId}.*`, scope: '*', rights: ['read', 'write', 'grant'] });
     if (!core.entries(h).some((e) => e.kind === 'kind' && e.body && e.body.name === 'device-name')) core.weave(h, { cell: 'DEF·Figure', kind: 'kind', addr: 'kind:device-name', body: { name: 'device-name', cell: 'INS·Figure' } });
+    if (!core.entries(h).some((e) => e.kind === 'kind' && e.body && e.body.name === 'profile')) core.weave(h, { cell: 'DEF·Figure', kind: 'kind', addr: 'kind:profile', body: { name: 'profile', cell: 'DEF·Figure' } });
     if (!core.fold(h).entries.some((e) => e.kind === 'device-name' && e.body && e.body.device === dev.pub)) core.weave(h, { cell: 'INS·Figure', kind: 'device-name', addr: `device-name:${dev.pub.slice(0, 16)}`, body: { device: dev.pub, name: deviceName } });
   }
 
@@ -293,13 +294,23 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
     /** this device's human-readable name (word_HEXCODE), spun up once at creation */
     deviceName,
     /** every device's name in the log: { devicePubKey -> name } */
-    deviceNames() { const m = {}; for (const e of core.fold(h).entries) if (e.kind === 'device-name' && e.body && e.body.device && e.body.name) m[e.body.device] = e.body.name; return m; },
+    deviceNames() { const m = {}; for (const e of core.fold(h).entries) if (e.kind === 'device-name' && e.body && e.body.device && e.body.name) m[e.body.device.slice(0, 8)] = e.body.name; return m; },
+    /** the live profile for this account: { username, photo, bio } — empty strings until set */
+    profile() { const e = core.fold(h).entries.filter((x) => x.kind === 'profile').at(-1); return e && e.body ? { username: e.body.username || '', photo: e.body.photo || '', bio: e.body.bio || '' } : { username: '', photo: '', bio: '' }; },
+    /** set username / photo / bio: a new entry that supersedes the last (weave, never erase), signed and synced */
+    setProfile({ username = '', photo = '', bio = '' } = {}) {
+      const body = clean({ account: (root ? root.pub : dev.pub), username, photo, bio });
+      const prior = core.fold(h).entries.filter((x) => x.kind === 'profile').map((x) => x.id);
+      const e = core.weave(h, { cell: 'DEF·Figure', kind: 'profile', addr: `profile:${(root ? root.pub : dev.pub).slice(0, 16)}`, body, of: prior });
+      soon();
+      return e;
+    },
     /** wait until everything so far is signed and saved; rejects with the real error if saving failed */
     async settle() { clearTimeout(timer); timer = null; signNow(); try { await store.flush(); await blobStore.flush(); } finally { status(); } },
     verify() { recompute(); return { counted: okSet.size, uncounted: A.verifyAccess(h, { roots }).uncounted }; },
     report() { const r = store.report(), b = blobStore.report(); const rt = [...routeHealth.values()]; const unsigned = core.entries(h).filter((e) => e.by === writer && !INFRA.has(e.kind) && !okSet.has(e.id)).length; return { backend: r.backend, encrypted: r.encrypted, unpersisted: r.unpersisted + b.unpersisted, unsigned, damaged: r.damaged.length + b.damaged.length, gaps: r.gaps.length + b.gaps.length, lastError: r.lastError || b.lastError, entries: core.entries(h).length, share: share ? { role: share.role, routes: rt.length, routesUp: rt.filter((x) => x.ok).length, last: syncState.last, error: syncState.error, quarantined: syncState.quarantined } : null }; },
     /** the raw connection snapshot for the dev graph: who, and which transports are up */
-    network() { const devSelf = writer.split('.').slice(0, writer.startsWith('guest.') ? 2 : 1).join('.'); return { name, self: devSelf, peers: space.peers(), routes: [...routeHealth.entries()].map(([uri, h]) => ({ uri, scheme: uri.split(':')[0], ok: !!h.ok, error: h.error || null, at: h.at || null })) }; },
+    network() { const devSelf = writer.split('.').slice(0, writer.startsWith('guest.') ? 2 : 1).join('.'); return { name, self: devSelf, selfName: deviceName, peers: space.peers(), names: space.deviceNames(), routes: [...routeHealth.entries()].map(([uri, h]) => ({ uri, scheme: uri.split(':')[0], ok: !!h.ok, error: h.error || null, at: h.at || null })) }; },
     /** the dev connection graph (graph.mjs): nodes + edges + serializers */
     networkGraph() { return G.networkGraph(this.network()); },
     networkDot() { return G.toDOT(this.networkGraph()); },
