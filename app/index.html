@@ -4,6 +4,7 @@
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.5.3/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hyperformula@3.5.0/dist/hyperformula.full.min.js"></script>
 <script src="./vendor/qrcode.js"></script>
+<script src="./vendor/falsify.js"></script>
 <script src="./config.js" onerror="void 0"></script>
 <script type="module">
 import {openSpace} from './engine.mjs';
@@ -168,6 +169,22 @@ td input{font:inherit;padding:2px 6px;border:1px solid var(--acc);border-radius:
 .welcome{text-align:center;color:var(--mut);padding:40px 10px}
 .cinput{display:flex;gap:8px;align-items:flex-end;padding:12px 16px 32px;max-width:760px;width:100%}
 .cinput input{flex:1}
+</style><style id="auto-css">
+.au-canvas{position:relative;overflow:auto;border:1px solid var(--line);border-radius:12px;background:linear-gradient(90deg,#fbfaf7 1px,transparent 1px)0 0/24px 24px,linear-gradient(#fbfaf7 1px,transparent 1px)0 0/24px 24px,#fff;min-height:360px}
+.au-node{position:absolute;z-index:2;width:184px;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.08)}
+.au-node .h{display:flex;align-items:center;gap:7px;padding:7px 10px;cursor:grab;border-bottom:1px solid var(--line);font-weight:600}
+.au-node .h .x{margin-left:auto;cursor:pointer;color:var(--mut);font-size:13px}
+.au-node .h .x:hover{color:var(--bad)}
+.au-node .p{display:flex;align-items:center;gap:6px;padding:3px 10px;font-size:12px;font-family:ui-monospace,Menlo,monospace;color:var(--mut)}
+.au-node .p .d{width:10px;height:10px;border-radius:50%;background:var(--mut);cursor:crosshair;flex:none}
+.au-node .p.out .d{background:var(--acc);margin-left:auto}
+.au-node .p.in .d{margin-right:auto}
+.au-node .f{padding:3px 10px 8px}
+.au-node input,.au-node textarea{width:100%;font:inherit;font-size:12.5px;border:1px solid var(--line);border-radius:6px;padding:4px 6px}
+.au-node textarea{resize:vertical;min-height:34px}
+.au-node .ov{margin:2px 10px 8px;padding:5px 7px;background:#f4f3ee;border-radius:6px;font:11.5px/1.4 ui-monospace,Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:110px;overflow:auto}
+.au-svg{position:absolute;inset:0;pointer-events:none;z-index:1}
+.au-pal{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
 </style><style id="responsive">
 @media (max-width:800px){
  .app{flex-direction:column}
@@ -331,6 +348,54 @@ function suggest(col,vals){const ty=inferType(vals);const n=new Set(vals.filter(
  return {t:null,ty,n,why:'No standard term suggested. Search for one or keep it as a local term.'};}
 function mapsFor(src,k){const m={};for(const e of D.mapLog.filter(e=>e.src===src&&(k==null||e.n<=k)))m[e.col]=e;return m;}
 function unresolved(src){const s=srcOf(src);if(!s)return 0;const m=mapsFor(src);return s.cols.filter(c=>!m[c]||m[c].status==='superseded').length;}
+/* ================= automations ================= */
+let AUTO={nodes:[],edges:[],conn:null,n:1};
+const AUTODEFS={text:{label:'Text',in:[],out:['text'],fields:[['text','textarea','paste or write…']]},
+ http:{label:'HTTP call',in:['body'],out:['response'],fields:[['url','text','https://api.example.com/…'],['method','text','POST']]},
+ model:{label:'Model',in:['prompt'],out:['answer'],fields:[['prompt','textarea','prompt (or wire it in)']]},
+ store:{label:'Store to log',in:['value'],out:['id']}};
+async function autoExec(n,inp){const f=n.fields||{};try{
+ if(n.type==='text')return{text:f.text||''};
+ if(n.type==='http'){const r=await fetch(f.url||'',{method:f.method||'GET',headers:{'Content-Type':'application/json'},body:inp.body!==undefined?JSON.stringify(inp.body):undefined});const t=await r.text();return{response:t.slice(0,500)};}
+ if(n.type==='model'){const p=(inp.prompt!==undefined?inp.prompt:(f.prompt||''));return{answer:await askModel(p,personaFor(p))};}
+ if(n.type==='store'){const e=ENGINE.append('auto+',{name:'automation result',value:inp.value});return{id:e.id};}
+}catch(e){return{error:String(e&&e.message||e)}}return{};}
+function autoAdd(t){const n={id:'a'+(AUTO.n++),type:t,x:40,y:40+30*AUTO.nodes.length,fields:{}};AUTO.nodes.push(n);drawAuto();}
+function autoRemove(id){AUTO.nodes=AUTO.nodes.filter(n=>n.id!==id);AUTO.edges=AUTO.edges.filter(e=>e.from!==id&&e.to!==id);drawAuto();}
+function autoPortCenter(id,port,dir){const el=document.getElementById('au-'+id);if(!el)return null;const p=el.querySelector('.p.'+dir+'[data-port="'+port+'"] .d');if(!p)return null;const r=p.getBoundingClientRect(),c=el.parentNode.getBoundingClientRect();return{x:r.left-c.left+r.width/2+el.parentNode.scrollLeft,y:r.top-c.top+r.height/2+el.parentNode.scrollTop};}
+function autoEdges(){const svg=document.getElementById('au-svg');if(!svg)return;svg.innerHTML='';for(const e of AUTO.edges){const a=autoPortCenter(e.from,e.fromPort,'out'),b=autoPortCenter(e.to,e.toPort,'in');if(!a||!b)continue;const l=document.createElementNS('http://www.w3.org/2000/svg','path');const mx=(a.x+b.x)/2;l.setAttribute('d','M '+a.x+' '+a.y+' C '+mx+' '+a.y+', '+mx+' '+b.y+', '+b.x+' '+b.y);l.setAttribute('stroke','var(--acc)');l.setAttribute('stroke-width','2');l.setAttribute('fill','none');svg.appendChild(l);}}
+function drawAuto(){
+ const defs=Object.keys(AUTODEFS);
+ let pal='<div class="au-pal">'+defs.map(t=>'<button class="b" onclick="autoAdd(\''+t+'\')">+ '+AUTODEFS[t].label+'</button>').join('')+'<span style="margin-left:auto"></span><button class="b p" onclick="autoRun()">\u25b6 Run</button><button class="b" onclick="autoSave()">Save</button><button class="b" onclick="autoClear()">Clear</button></div>';
+ let canv='<div class="au-canvas" id="au-canvas" onscroll="autoEdges()"><svg class="au-svg" id="au-svg"></svg>';
+ for(const n of AUTO.nodes){const d=AUTODEFS[n.type];
+  const ins=d.in.map(p=>'<div class="p in" data-port="'+p+'"><span class="d" data-node="'+n.id+'" data-port="'+p+'" data-dir="in"></span>'+esc(p)+'</div>').join('');
+  const outs=d.out.map(p=>'<div class="p out" data-port="'+p+'"><span>'+esc(p)+'</span><span class="d" data-node="'+n.id+'" data-port="'+p+'" data-dir="out"></span></div>').join('');
+  const fs=(d.fields||[]).map(f=>'<div class="f">'+(f[1]==='textarea'?'<textarea data-k="'+f[0]+'" placeholder="'+esc(f[2]||'')+'">'+esc(n.fields[f[0]]||'')+'</textarea>':'<input data-k="'+f[0]+'" value="'+esc(n.fields[f[0]]||'')+'" placeholder="'+esc(f[2]||'')+'">')+'</div>').join('');
+  canv+='<div class="au-node" id="au-'+n.id+'" style="left:'+n.x+'px;top:'+n.y+'px"><div class="h"><span class="dot"></span>'+esc(d.label)+'<span class="x" onclick="autoRemove(\''+n.id+'\')">\u2715</span></div><div>'+ins+outs+'</div>'+fs+'<div class="ov" id="au-out-'+n.id+'"></div></div>';
+ }
+ canv+='</div>';
+ document.getElementById('auto-pal').innerHTML=pal;
+ const c=document.getElementById('auto-canv'); c.innerHTML=canv;
+ for(const n of AUTO.nodes){const el=document.getElementById('au-'+n.id);
+  el.querySelector('.h').addEventListener('mousedown',(ev)=>{const sx=ev.clientX,sy=ev.clientY,ox=n.x,oy=n.y;const mv=(e)=>{n.x=ox+e.clientX-sx;n.y=oy+e.clientY-sy;el.style.left=n.x+'px';el.style.top=n.y+'px';autoEdges();};const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up);};window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up);});
+  el.querySelectorAll('input,textarea').forEach(f=>f.addEventListener('input',()=>{n.fields[f.dataset.k]=f.value;}));
+  el.querySelectorAll('.d').forEach(p=>p.addEventListener('mousedown',(ev)=>{ev.stopPropagation();const dir=p.dataset.dir,id=p.dataset.node,port=p.dataset.port;
+   if(dir==='out'){AUTO.conn={id,port};el.querySelectorAll('.d').forEach(x=>x.style.boxShadow=x===p?'0 0 0 3px var(--accbg)':'');}
+   else if(AUTO.conn){if(!AUTO.edges.some(e=>e.from===AUTO.conn.id&&e.fromPort===AUTO.conn.port&&e.to===id&&e.toPort===port))AUTO.edges.push({from:AUTO.conn.id,fromPort:AUTO.conn.port,to:id,toPort:port});AUTO.conn=null;document.querySelectorAll('.d').forEach(x=>x.style.boxShadow='');autoEdges();}}));
+ }
+ autoEdges();
+}
+async function autoRun(){const inc={};for(const e of AUTO.edges){const t=AUTO.nodes.find(n=>n.id===e.to);if(!t)continue;const i=AUTODEFS[t.type].in.indexOf(e.toPort);if(i<0)continue;(inc[e.to]=inc[e.to]||{})[i]={id:e.from,port:e.fromPort};}
+ const out={},pend=new Set(AUTO.nodes.map(n=>n.id));let guard=AUTO.nodes.length+1;
+ while(pend.size&&guard--){let prog=false;for(const id of [...pend]){const n=AUTO.nodes.find(x=>x.id===id);const inp={};let ready=true;AUTODEFS[n.type].in.forEach((p,i)=>{const s=inc[id]&&inc[id][i];if(s&&out[s.id]!==undefined)inp[p]=out[s.id][s.port];else if(s)ready=false;else inp[p]=undefined;});if(!ready)continue;const el=document.getElementById('au-out-'+id);if(el){el.textContent='\u2026';}out[id]=await autoExec(n,inp);if(el){el.textContent=JSON.stringify(out[id],null,1);el.style.color=out[id].error?'var(--bad)':'var(--acc)';}pend.delete(id);prog=true;}if(!prog)break;}
+}
+function autoSave(){if(!AUTO.nodes.length)return;const name='automation '+(ENGINE.view().filter(e=>e.op==='auto+').length+1);ENGINE.append('auto+',{name,nodes:AUTO.nodes,edges:AUTO.edges});drawAuto();}
+function autoClear(){AUTO={nodes:[],edges:[],conn:null,n:1};drawAuto();}
+function autoLoad(w){AUTO={nodes:(w.body.nodes||[]).map(n=>({...n,fields:n.fields||{}})),edges:w.body.edges||[],conn:null,n:1+(w.body.nodes||[]).length};drawAuto();}
+function vAuto(){let h='<h1>Automations</h1><p class="sub">Connect nodes to drive other tools. An automation is saved as entries, so it re-runs under a better reader or model as new entries, never an overwrite.</p><div id="auto-pal"></div><div id="auto-canv"></div>';
+ const saved=ENGINE.view().filter(e=>e.op==='auto+');if(saved.length){h+='<div class="gt">Saved</div>'+saved.map(w=>'<span class="chip c-ok" style="cursor:pointer;margin:2px" onclick="autoLoad(ENGINE.view().find(e=>e.id===\''+w.id+'\'))">'+esc(w.body.name||w.id)+'</span>').join('');}
+ return h;}
 /* ================= render ================= */
 function render(){render0();narrowNav();}
 let NAVOPEN=false;
@@ -340,15 +405,16 @@ function narrowNav(){const on=matchMedia('(max-width:800px)').matches;document.b
 document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('aside .it, aside .wsh, aside .link')&&matchMedia('(max-width:800px)').matches)NAVOPEN=false;},true);
 addEventListener('resize',()=>{if(document.querySelector('aside'))narrowNav();});
 function render0(){side();tabbar();const m=document.getElementById('main');
- m.innerHTML=U.sel==='docs'?vDocs('doc'):U.sel==='notes'?vDocs('note'):/^doc:/.test(U.sel)?vDoc(U.sel.slice(4)):U.sel==='ws'?vWs():U.sel==='files'?vFiles():U.sel==='log'?vLog():U.sel==='match'?vMatch():U.sel==='profile'?vProfile():U.sel==='chat'?vChat():vTable();
+ m.innerHTML=U.sel==='docs'?vDocs('doc'):U.sel==='notes'?vDocs('note'):/^doc:/.test(U.sel)?vDoc(U.sel.slice(4)):U.sel==='ws'?vWs():U.sel==='files'?vFiles():U.sel==='log'?vLog():U.sel==='match'?vMatch():U.sel==='profile'?vProfile():U.sel==='chat'?vChat():U.sel==='auto'?vAuto():vTable();
  document.body.classList.toggle('viewing',!!U.view);
  if(U.sel==='files')wireDrop();
  if(U.sel==='profile')setTimeout(drawQr,0);
- if(U.sel==='chat')focusId('cq');
- docFocus();
+  if(U.sel==='chat')focusId('cq');
+  if(U.sel==='auto')drawAuto();
+  docFocus();
  const ed=document.getElementById('ed');if(ed){ed.focus();ed.select&&ed.select();}}
 function tabbar(){const t=document.getElementById('tabbar');if(!t)return;const onDoc=/^doc:/.test(U.sel);
- const items=[['files','archive','Files',U.sel==='files'],['chat','chat-circle-text','Ask',U.sel==='chat'],['docs','file-text','Docs',U.sel==='docs'||(onDoc&&(DOC(U.sel.slice(4))||{}).kind==='doc')],['notes','note-pencil','Notes',U.sel==='notes'||(onDoc&&(DOC(U.sel.slice(4))||{}).kind==='note')],['profile','user','Profile',U.sel==='profile']];
+  const items=[['files','archive','Files',U.sel==='files'],['chat','chat-circle-text','Ask',U.sel==='chat'],['auto','git-branch','Automations',U.sel==='auto'],['docs','file-text','Docs',U.sel==='docs'||(onDoc&&(DOC(U.sel.slice(4))||{}).kind==='doc')],['notes','note-pencil','Notes',U.sel==='notes'||(onDoc&&(DOC(U.sel.slice(4))||{}).kind==='note')],['profile','user','Profile',U.sel==='profile']];
  t.innerHTML=items.map(([k,i,n,on])=>'<button class="t '+(on?'on':'')+'" onclick="U.view=null;U.open=null;U.sel=\''+k+'\';render()">'+ic(i)+n+'</button>').join('');}
 function side(){const onDoc=/^doc:/.test(U.sel);
  let h='<div class="brand">'+ic('hard-drives')+'<div>Your database<small>End-to-end encrypted</small></div></div>';
@@ -356,7 +422,8 @@ function side(){const onDoc=/^doc:/.test(U.sel);
  h+='<div class="it '+(U.sel==='ws'?'on':'')+'" onclick="U.sel=\'ws\';render()">'+ic('table')+' Tables<span class="n">'+wsTables(U.ws).length+'</span></div>';
  h+='<div class="it '+(U.sel==='docs'||(onDoc&&(DOC(U.sel.slice(4))||{}).kind==='doc')?'on':'')+'" onclick="U.sel=\'docs\';render()">'+ic('file-text')+' Documents<span class="n">'+wsDocs(U.ws,'doc').length+'</span></div>';
  h+='<div class="it '+(U.sel==='notes'||(onDoc&&(DOC(U.sel.slice(4))||{}).kind==='note')?'on':'')+'" onclick="U.sel=\'notes\';render()">'+ic('note-pencil')+' Notes<span class="n">'+wsDocs(U.ws,'note').length+'</span></div>';
- h+='<div class="it '+(U.sel==='chat'?'on':'')+'" onclick="U.sel=\'chat\';render()">'+ic('chat-circle-text')+' Ask<span class="n">'+U.chats.length+'</span></div>';
+  h+='<div class="it '+(U.sel==='chat'?'on':'')+'" onclick="U.sel=\'chat\';render()">'+ic('chat-circle-text')+' Ask<span class="n">'+U.chats.length+'</span></div>';
+  h+='<div class="it '+(U.sel==='auto'?'on':'')+'" onclick="U.sel=\'auto\';render()">'+ic('git-branch')+' Automations</div>';
  h+='<div class="side-h">SPACES</div>';
  for(const w of D.ws){const on=U.ws===w.id;
   h+='<div class="ws '+(on?'on':'')+'"><div class="wsh" onclick="goWs(\''+w.id+'\')">'+ic(on?'folder-open':'folder')+' '+esc(w.name)+'</div>';
@@ -944,13 +1011,21 @@ function retrieve(q,att){const tbs=wsTables(U.ws),fl=wsFiles(U.ws),ds=wsDocs(U.w
  return out;}
 async function askModel(user,system){const r=await fetch(EODB_MODEL.url+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:EODB_MODEL.model,stream:false,messages:[{role:'system',content:system||personaFor(user)},{role:'user',content:user}],options:{num_predict:140,temperature:0.2}})});if(!r.ok)throw new Error('local model HTTP '+r.status);const j=await r.json();const a=((j.message&&j.message.content)||'').trim();if(!a)throw new Error('empty model response');return a;}
 function fallbackAnswer(q,facts){return 'Local model not reachable, so here is what the fold says:\n\n'+facts.slice(0,12).join('\n');}
-function checkAnswer(answer,facts){if(!facts||!facts.length)return[];const ground=facts.join(' ').toLowerCase();const out=[];for(const sent of (answer||'').split(/(?<=[.!?])\s+/)){const t=sent.trim();if(!t)continue;const nums=(t.match(/\d[\d,.]*/g)||[]);const words=t.toLowerCase().split(/[^a-z0-9]+/).filter(w=>w.length>4&&!/^\d/.test(w));let hit=0,total=nums.length;for(const n of nums){if(ground.includes(n))hit++;}for(const w of words){total++;if(ground.includes(w))hit++;}if(!total)continue;out.push({s:t,standing:hit===total?'supported':hit>0?'partial':'unsupported'});}return out;}
+// The judge is The Fold's own falsifier (fold-chat-falsify-answer.js), bundled with the language priors stubbed
+// (they load from Zenodotus, not here). Verdicts -> standings, exactly as the profile does.
+function gradeAnswer(answer,facts){const F=window.Falsify;if(!F||!F.falsifyAnswer||!facts||!facts.length)return[];
+ const sents=(answer||'').split(/(?<=[.!?])\s+/).map(x=>x.trim()).filter(Boolean);
+ const sources=facts.map((f,i)=>({ref:'src'+i,title:'src'+i,url:'',text:f}));
+ let r;try{r=F.falsifyAnswer(sents,sources);}catch(e){return[];}
+ const STANDING={corroborated:'supported',held:'supported',contested:'contradicted',weak:'unsupported',unsupported:'unsupported','n/a':'argument'};
+ return r.claims.map(c=>{const standing=STANDING[c.verdict]||'unsupported';const w=(c.witnesses||[]).find(x=>x.verdict==='states'||x.verdict==='contradicts');return {s:sents[c.i]||c.i,standing,why:w?w.verdict:''};});}
+
 async function ask(q,att){const t=String(q||'').trim().toLowerCase();const greet=/^(hi|hello|hey|how are you|whats up|what's up|yo|sup|good (morning|afternoon|evening))\b/.test(t);
  if(!(att&&att.length)&&greet){return {answer:'Doing well \u2014 what can I help you with?',facts:[],system:personaFor(q),user:q};}
  const facts=retrieve(q,att);const withData=facts.length>0||(att&&att.length>0);
  const system=personaFor(q)+(withData?DATA_RULE:'');
  const user=withData?('DATA:\n'+facts.join('\n')+'\n\nQuestion: '+q):q;
- let answer=null,err=null;try{answer=await askModel(user,system);}catch(e){err=e;}if(!answer)answer=fallbackAnswer(q,facts);const checks=checkAnswer(answer,facts);return {answer,facts,system,user,checks,err:err&&String(err.message||err)};}
+ let answer=null,err=null;try{answer=await askModel(user,system);}catch(e){err=e;}if(!answer)answer=fallbackAnswer(q,facts);const checks=gradeAnswer(answer,facts);return {answer,facts,system,user,checks,err:err&&String(err.message||err)};}
 function vChat(){const c=curChat();
  let h='<h1 style="display:flex;align-items:center;gap:10px">Ask<button class="b p" style="margin-left:auto" onclick="newChat()">'+ic('plus')+' New chat</button></h1>';
  h+='<div class="chats">'+U.chats.map(ch=>'<span class="chip '+(ch.id===U.chatId?'c-ok':'')+'" style="cursor:pointer" onclick="openChat(\''+ch.id+'\')">'+esc(ch.title||'New chat')+' <button class="xd" title="Delete" onclick="event.stopPropagation();delChat(\''+ch.id+'\')">'+ic('x')+'</button></span>').join('')+'</div>';

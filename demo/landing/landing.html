@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>eodb</title>
+<link rel="manifest" href="/eodb-clone/demo/manifest.webmanifest">
+<link rel="icon" type="image/png" href="/eodb-clone/demo/icons/icon-192.png">
+<script>
+  // theme before first paint (the holodeck fold-theme-boot pattern)
+  (function () {
+    try {
+      var t = localStorage.getItem('eodb-theme');
+      if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {}
+  })();
+</script>
+<style>
+  :root{--bg:#17171a;--s1:#1c1c20;--s2:#29292e;--sel:#26272c;--sel2:#30333b;--line:#2e2e33;--line2:#3f3f46;--ink:#f4f4f6;--ink2:#c9c9d2;--mut:#9d9da8;--dim:#9494a0;--acc:#8ab4ff;--acc2:#6d9dff;--green:#56d364;--bad:#f87171;--r-sm:6px;--r-md:10px;--r-lg:14px;--r-xl:20px;--sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;--mono:ui-monospace,SFMono-Regular,Menlo,monospace;color-scheme:dark}
+  :root[data-theme="light"]{--bg:#ffffff;--s1:#ffffff;--s2:#f1f1f4;--sel:#eef0f4;--sel2:#e4e7ee;--line:#e4e4e9;--line2:#cfcfd7;--ink:#141416;--ink2:#44444e;--mut:#5f5f6b;--dim:#666673;--acc:#1d4ed8;--acc2:#1a44c0;--green:#16793a;--bad:#c62828;color-scheme:light}
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); }
+  ::selection { background: var(--acc); color: var(--bg); }
+  header { display: flex; align-items: center; gap: 10px; padding: 12px 20px; border-bottom: 1px solid var(--line); }
+  .mark { width: 18px; height: 18px; border-radius: 5px; background: var(--acc2); }
+  .wordmark { font: 600 13px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink); }
+  .status { margin-left: auto; font: 400 12px var(--mono); color: var(--mut); }
+  .status b { color: var(--ink2); font-weight: 600; }
+  main { max-width: 640px; margin: 0 auto; padding: 10vh 24px 120px; }
+  .hero { text-align: center; margin-bottom: 28px; }
+  .hero h1 { font-size: 26px; font-weight: 600; letter-spacing: -.01em; margin: 0 0 6px; }
+  .hero p { color: var(--mut); margin: 0; font-size: 14px; }
+  .composer { display: flex; align-items: center; gap: 8px; background: var(--s2); border: 1px solid var(--line2); border-radius: var(--r-xl); padding: 6px 8px 6px 18px; }
+  .composer:focus-within { border-color: var(--acc2); }
+  .composer textarea { flex: 1; background: transparent; border: 0; outline: 0; color: var(--ink); font: 400 15px var(--sans); padding: 12px 0; min-height: 48px; resize: vertical; line-height: 1.5; }
+  .refs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .ref { font: 400 12.5px var(--mono); color: var(--acc); background: var(--sel); border-radius: 6px; padding: 3px 8px; }
+  .bonds { margin-top: 8px; font: 400 13px var(--mono); color: var(--ink2); }
+  .bonds span.rel { color: var(--mut); }
+  .card .meta b { color: var(--ink2); font-weight: 600; }
+  .composer button { flex: none; border: 0; border-radius: var(--r-lg); background: var(--acc2); color: #fff; font: 600 14px var(--sans); padding: 10px 16px; cursor: pointer; }
+  .composer button:hover { background: var(--acc); }
+  .hint { text-align: center; color: var(--dim); font: 400 12px var(--mono); margin-top: 10px; }
+  .hint span { color: var(--mut); }
+  section { margin-top: 40px; }
+  section h2 { font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--mut); margin: 0 0 10px; }
+  .cards { display: grid; gap: 8px; }
+  .card { background: var(--s1); border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px 16px; }
+  .card .name { font-weight: 600; }
+  .card .meta { font: 400 12px var(--mono); color: var(--dim); margin-top: 2px; }
+  .card .body { margin-top: 8px; color: var(--ink2); font-size: 14px; white-space: pre-wrap; }
+  .empty { color: var(--dim); font-style: italic; font-size: 14px; }
+  .share { margin-top: 48px; border: 1px dashed var(--line2); border-radius: var(--r-lg); padding: 18px; color: var(--mut); font-size: 13.5px; }
+  .share h3 { margin: 0 0 4px; font-size: 14px; color: var(--ink); }
+  .share code { font: 400 12px var(--mono); background: var(--s2); padding: 2px 6px; border-radius: 6px; word-break: break-all; }
+  button.ghost { background: transparent; border: 1px solid var(--line2); color: var(--ink2); border-radius: var(--r-md); font: 500 13px var(--sans); padding: 7px 12px; cursor: pointer; }
+  button.ghost:hover { color: var(--ink); border-color: var(--acc); }
+  .hidden { display: none; }
+  .error { color: #fff; background: var(--bad); border-radius: var(--r-md); padding: 10px 14px; margin-bottom: 16px; font-size: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="mark"></div>
+  <span class="wordmark">eodb</span>
+  <span class="status" id="status">starting…</span>
+</header>
+
+<main>
+  <div class="error hidden" id="error"></div>
+
+  <div class="hero">
+    <h1>What are you working on?</h1>
+    <p>Everything stays on this device, read by the khora reader — no model. Paste something and it becomes referents and relations in a local log.</p>
+  </div>
+
+  <div class="composer">
+    <textarea id="new-name" placeholder="Paste or write something — then ⌘/Ctrl+Enter to read it" spellcheck="false"></textarea>
+    <button id="add-file">Read</button>
+  </div>
+  <div class="hint"><span>⌘/Ctrl+Enter</span> to read · a <span>project</span> names a group of sources</div>
+
+  <section>
+    <h2>Sources</h2>
+    <div class="cards" id="files"><div class="empty">none yet</div></div>
+  </section>
+
+  <div class="share">
+    <h3>Share, or open this on another device</h3>
+    <p>You only need an identity beyond this device when you want to share or keep working elsewhere. Until then, nothing leaves this browser.</p>
+    <p>This device: <code id="dev-id">…</code></p>
+    <button class="ghost" id="share-btn">Share / add device</button>
+    <div class="hidden" id="share-detail">
+      <p style="margin-top:12px">Sharing means publishing your log to a carrier (the mailbox) and granting a lease. That's the one place an "account" appears — optional for everything local.</p>
+      <p style="color:var(--dim)">(carrier wiring not connected in this build)</p>
+    </div>
+  </div>
+</main>
+
+<script type="module">
+import * as core from '../../../pharos-clone/lib/core.mjs';
+import * as B from '../../../pharos-clone/lib/browser-store.mjs';
+import * as identity from '../../../pharos-clone/lib/identity-pure.mjs';
+import { readDocument } from '../../../holodeck/holodeck-reader.js';   // cite the khora reader
+try { navigator.serviceWorker && navigator.serviceWorker.register('/eodb-clone/demo/sw.js', { scope: '/' }).catch(() => {}); } catch (e) {} — do not recreate
+
+const $ = (s) => document.querySelector(s);
+const state = { h: null, store: null, key: null, backend: null };
+
+function setError(msg) { const el = $('#error'); if (msg) { el.textContent = msg; el.classList.remove('hidden'); } else el.classList.add('hidden'); }
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+function declareKind(kind, cell) {
+  const have = core.entries(state.h).some((e) => e.kind === 'kind' && e.body && e.body.name === kind);
+  if (!have) core.weave(state.h, { cell: 'DEF·Figure', kind: 'kind', addr: `kind:${kind}`, body: { name: kind, cell } });
+}
+const live = (kind) => core.fold(state.h).entries.filter((e) => e.kind === kind);
+
+async function commit() {
+  const text = $('#new-name').value.trim();
+  if (!text) return;
+  $('#new-name').value = '';
+  const name = (text.split('\n')[0] || '').slice(0, 80) || 'Untitled';
+
+  let W = null, readErr = null;
+  try { W = await readDocument(text); } catch (e) { readErr = String(e.message || e); }
+
+  const src = core.weave(state.h, { cell: 'INS·Figure', kind: 'source', addr: 'source:' + crypto.randomUUID(),
+    body: { name, text: text.slice(0, 4000), language: W && W.language, sentences: W && W.sentences && W.sentences.length, readErr } });
+  if (W) {
+    for (const c of (W.cast || [])) core.weave(state.h, { cell: 'INS·Figure', kind: 'referent', addr: 'referent:' + c.id, of: [src.id],
+      body: { id: c.id, name: (c.surfaces || [c.id])[0], surfaces: c.surfaces || [c.id], standing: c.standing } });
+    for (const e of (W.edges || [])) core.weave(state.h, { cell: 'CON·Figure', kind: 'bond', addr: 'bond:' + crypto.randomUUID(), of: [src.id],
+      body: { a: e.end1, b: e.end2, relation: e.label, polarity: e.polarity } });
+  }
+  await state.store.flush();
+  render();
+}
+
+function render() {
+  const sources = live('source');
+  const referents = live('referent');
+  const bonds = live('bond');
+  const refById = new Map(referents.map((r) => [r.id, r]));
+  const refOf = (srcId) => referents.filter((r) => (r.of || []).includes(srcId));
+  const bondOf = (srcId) => bonds.filter((b) => (b.of || []).includes(srcId));
+
+  $('#files').innerHTML = sources.map((s) => {
+    const rs = refOf(s.id), bs = bondOf(s.id);
+    const refs = rs.map((r) => `<span class="ref">${esc(r.body.name)}</span>`).join('');
+    const rels = bs.map((b) => `<div>${esc(b.body.a)} <span class="rel">${esc(b.body.relation || '—')}</span> ${esc(b.body.b)}${b.body.polarity === '-' ? ' (neg)' : ''}</div>`).join('');
+    const summary = s.body.readErr
+      ? `<div class="meta">read failed: ${esc(s.body.readErr)}</div>`
+      : `<div class="meta"><b>${rs.length}</b> referents · <b>${bs.length}</b> relations · ${esc(s.body.language || '')} · ${s.body.sentences || 0} sentences</div>`;
+    return `<div class="card"><div class="name">${esc(s.body.name)}</div>${summary}${refs ? `<div class="refs">${refs}</div>` : ''}${rels ? `<div class="bonds">${rels}</div>` : ''}</div>`;
+  }).join('') || '<div class="empty">none yet — paste something and read it</div>';
+
+  const r = state.store.report();
+  $('#status').innerHTML = `<b>this device</b> · local · 1 replica · ${esc(r.backend)} · ${sources.length} source${sources.length === 1 ? '' : 's'}`;
+}
+
+async function boot() {
+  core.configure({ cells: await (await fetch('../../../pharos-clone/cells.json')).json() });
+  identity.usePure();
+  const { backend, kind } = await B.autoBackend('eodb-device');
+  const store = await B.openBrowserStore({ name: 'space', backend });
+  state.store = store; state.backend = kind;
+
+  let key = null;
+  const seed = await store.getSecret('device-key').catch(() => null);
+  if (seed) { try { key = identity.keyFromSeed(new TextDecoder().decode(seed)); } catch (e) { key = null; } }
+  if (!key) { key = identity.generateKey(); await store.putSecret('device-key', new TextEncoder().encode(key.priv.slice(0, 64))); }
+  state.key = key;
+
+  const writer = 'dev-' + key.pub.slice(0, 12);
+  state.h = core.open('space', { writer, store });   // idempotent: the frame is created once, on first visit
+
+  declareKind('source', 'INS·Figure');
+  declareKind('referent', 'INS·Figure');
+  declareKind('bond', 'CON·Figure');
+  await store.flush();
+
+  $('#dev-id').textContent = `${writer} · ${key.pub}`;
+  render();
+}
+
+$('#add-file').onclick = () => commit().catch((e) => setError(String(e.message || e)));
+$('#new-name').onkeydown = (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); commit().catch((err) => setError(String(err.message || err))); } };
+$('#share-btn').onclick = () => $('#share-detail').classList.toggle('hidden');
+
+boot().then(() => { try { B.requestPersistence?.(); } catch (e) {} }).catch((e) => { setError(String(e.message || e)); $('#status').textContent = 'failed to start'; });
+</script>
+</body>
+</html>

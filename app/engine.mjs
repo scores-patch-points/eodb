@@ -15,6 +15,7 @@ import * as T from './vendor/pharos/transport.mjs';
 import * as Loc from './vendor/pharos/locator.mjs';
 import { gate } from './vendor/pharos/gate.mjs';
 import * as N from './net.mjs';
+import * as G from './graph.mjs';
 
 // the page's operation names  ->  [pharos kind, cell]. Creating things is INS; setting a value on an existing thing is DEF (so two devices setting the
 // same cell at once are reported as a held conflict, never silently resolved); a retraction is NUL; reading a file is EVA; linking a column to a
@@ -26,6 +27,7 @@ export const OPS = {
   'cmt+': ['cmt', 'INS·Figure'], 'cmt=': ['cmt-set', 'DEF·Figure'], 'share+': ['share', 'INS·Figure'],
   'blk+': ['blk', 'INS·Figure'], 'blk=': ['blk-set', 'DEF·Figure'], 'voice+': ['voice', 'INS·Figure'],
   read: ['read', 'EVA·Figure'], map: ['map', 'CON·Figure'], retract: ['retract', 'NUL·Figure'],
+  'auto+': ['auto', 'INS·Figure'],
 };
 const KIND_OP = Object.fromEntries(Object.entries(OPS).map(([op, [kind]]) => [kind, op]));
 const INFRA = new Set(['frame', 'kind', 'signature', 'capability', 'device-key', 'recovery', 'locator', 'safe-copy', 'ack']);
@@ -60,6 +62,7 @@ function addrOf(op, b) {
     case 'blk+': case 'blk=': return `blk:${b.doc}:${b.id}`;
     case 'voice+': return `voice:${b.doc}:${n()}`;
     case 'read': return `read:${b.hash}:${n()}`; case 'map': return `map:${b.src}:${b.col}`;
+    case 'auto+': return `auto:${n()}`;
     case 'retract': return `retract:${b.of}`;
     default: throw new core.PharosError('UNKNOWN_OP', `unknown operation "${op}"`);
   }
@@ -281,6 +284,12 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
     async settle() { clearTimeout(timer); timer = null; signNow(); try { await store.flush(); await blobStore.flush(); } finally { status(); } },
     verify() { recompute(); return { counted: okSet.size, uncounted: A.verifyAccess(h, { roots }).uncounted }; },
     report() { const r = store.report(), b = blobStore.report(); const rt = [...routeHealth.values()]; const unsigned = core.entries(h).filter((e) => e.by === writer && !INFRA.has(e.kind) && !okSet.has(e.id)).length; return { backend: r.backend, encrypted: r.encrypted, unpersisted: r.unpersisted + b.unpersisted, unsigned, damaged: r.damaged.length + b.damaged.length, gaps: r.gaps.length + b.gaps.length, lastError: r.lastError || b.lastError, entries: core.entries(h).length, share: share ? { role: share.role, routes: rt.length, routesUp: rt.filter((x) => x.ok).length, last: syncState.last, error: syncState.error, quarantined: syncState.quarantined } : null }; },
+    /** the raw connection snapshot for the dev graph: who, and which transports are up */
+    network() { const devSelf = writer.split('.').slice(0, writer.startsWith('guest.') ? 2 : 1).join('.'); return { name, self: devSelf, peers: space.peers(), routes: [...routeHealth.entries()].map(([uri, h]) => ({ uri, scheme: uri.split(':')[0], ok: !!h.ok, error: h.error || null, at: h.at || null })) }; },
+    /** the dev connection graph (graph.mjs): nodes + edges + serializers */
+    networkGraph() { return G.networkGraph(this.network()); },
+    networkDot() { return G.toDOT(this.networkGraph()); },
+    networkMermaid() { return G.toMermaid(this.networkGraph()); },
     /** another tab changed the data */
     onChange(f) { listeners.add(f); return () => listeners.delete(f); },
     /** signing or saving progressed (flags and counts changed, the data did not) */
