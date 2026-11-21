@@ -163,6 +163,7 @@ td input{font:inherit;padding:2px 6px;border:1px solid var(--acc);border-radius:
 .cmsg.cu .cbody{background:var(--acc);color:#fff;border-radius:16px 16px 4px 16px}
 .cmsg.cs .cbody{background:var(--card);border:1px solid var(--line);border-radius:16px 16px 16px 4px}
 .cbody{padding:10px 14px;font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.think{color:var(--mut);font-style:italic}
 .cground{font-size:12px;opacity:.75;margin-top:6px;border-top:1px solid rgba(0,0,0,.12);padding-top:6px}
 .cp{margin:6px 0 0;font:11px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:240px;overflow:auto}
 .ck{padding:2px 0}
@@ -199,6 +200,7 @@ td input{font:inherit;padding:2px 6px;border:1px solid var(--acc);border-radius:
 .arch-node.transport{background:var(--card);border:1px solid var(--line2);border-radius:8px;padding:4px 10px;color:var(--ink2);display:inline-flex;gap:5px;align-items:center}
 .arch-node.transport .dot{width:7px;height:7px;border-radius:50%;background:var(--ok)}
 .arch-node.transport.down .dot{background:var(--bad)}
+.nchip{display:inline-flex;align-items:center;padding:2px 10px;border-radius:999px;font-weight:600;font-size:12px;line-height:1.7;white-space:nowrap}
 </style><style id="responsive">
 @media (max-width:800px){
  .app{flex-direction:column}
@@ -1000,7 +1002,8 @@ async function showSignIn(){const l=await ENGINE.share({routes:DEFAULT_ROUTES});
 let QR_CACHE=null,QR_FOR=null;async function drawQr(){if(!U.qr)return;const img=document.getElementById('qrimg');if(!img||!window.QRCodeLib)return;
  if(QR_FOR===U.shareLink&&QR_CACHE){if(img.src!==QR_CACHE)img.src=QR_CACHE;return;}
  try{QR_CACHE=await QRCodeLib.toDataURL(U.shareLink,{margin:4,width:720,errorCorrectionLevel:'M'});QR_FOR=U.shareLink;img.src=QR_CACHE;}catch(e){}}
-function nodeLabel(t){const i=String(t||'').lastIndexOf('_');if(i<0)return esc(t);return '<span style="color:#'+t.slice(i+1)+'">'+esc(t.slice(0,i))+'</span><span style="color:var(--mut)">_'+esc(t.slice(i+1))+'</span>';}
+function contrastOn(hex){const r=parseInt(hex.slice(0,2),16),g=parseInt(hex.slice(2,4),16),b=parseInt(hex.slice(4,6),16);return (0.2126*r+0.7152*g+0.0722*b)/255>0.5?'#141416':'#ffffff';}
+function nodeLabel(t){const i=String(t||'').lastIndexOf('_');if(i<0)return '<span class="nchip" title="'+esc(t)+'" style="background:var(--s2);color:var(--ink)">'+esc(t)+'</span>';const word=t.slice(0,i),hex=t.slice(i+1);return '<span class="nchip" title="'+esc(t)+'" style="background:#'+hex+';color:'+contrastOn(hex)+'">'+esc(word)+'</span>';}
 function vProfile(){const r=ENGINE.report(),role=ENGINE.role,peers=ENGINE.peers();
  let h=crumb(ic('user')+' Profile')+'<h1>Profile</h1>';
  h+='<div class="gt">THIS DEVICE</div><div class="card"><div class="fh"><b>'+ic('key')+' '+nodeLabel(ENGINE.deviceName)+'</b><span class="tag">'+esc(ENGINE.writer)+'</span>'+(r.unsigned?'<span class="chip c-w">'+r.unsigned+' signing</span>':'<span class="chip c-ok">'+ic('shield-check')+' all signed</span>')+'</div><div class="note" style="margin-top:6px">'+esc(ENGINE.writer)+' is the UUID (Ed25519 key); <b>'+esc(ENGINE.deviceName)+'</b> is its readable name. Signed with Ed25519 through a device-key grant, stored encrypted on '+esc(r.backend)+'.</div></div>';
@@ -1175,20 +1178,20 @@ async function ask(q,att,onChunk){const t=String(q||'').trim().toLowerCase();con
  const mech=mechAnswer(q,att);if(mech){return {answer:mech.answer,facts:[],system:'(mechanical \u2014 no model)',user:q,checks:[{s:mech.steps.join(' \u2192 '),standing:'supported'}],mech:true};}
  const facts=retrieve(q,att);const withData=facts.length>0||(att&&att.length>0);
  const c=curChat();const lastUser=c?c.msgs.filter(m=>m.role==='user').at(-1):null;const lastSys=c?c.msgs.filter(m=>m.role==='sys'&&m.text).at(-1):null;
- const isFollow=!withData&&!att.length&&/^(which|what|who|and|but|then|so|it|they|he|she|how|why|what about|how about|ok|okay|nice|great|tell me more|more)\b/i.test(q.trim())&&lastSys;
+ const isFollow=!withData&&!att.length&&/^(which one|what about|how about|tell me more|and him|and her|and them|more on|elaborate|expand)\b/i.test(q.trim())&&lastSys;
  const system=defRules(q,withData);
  const user=withData?('DATA:\n'+facts.join('\n')+'\n\nQuestion: '+q):(isFollow?'Previous answer: '+lastSys.text+'\n\nFollow-up question: '+q:q);
  // DEF the void: declare the instruction void (done above in defRules)
  let answer=null,err=null,mouth=null,recCount=0;
  try{mouth=await askModel(user,system,onChunk);}catch(e){err=e;}
  if(mouth){const eva=evaRules(mouth);if(eva.ok){answer=voice(mouth);}else{recCount++;const rec=recRules(mouth);const eva2=evaRules(rec);answer=eva2.ok?voice(rec):voice(rec);}}
- if(!answer)answer=fallbackAnswer(q,facts);
+ if(!answer){if(facts.length)answer=fallbackAnswer(q,facts);else answer='I couldn\'t reach the local model. Is Ollama running on port 11434?';}
  const checks=gradeAnswer(answer,facts);checks.push({s:'DEF/EVA/REC: '+recCount+' re-ground'+(recCount===1?'':'s'),standing:recCount===0?'supported':'partial'});
  return {answer,mouth,facts,system,user,checks,err:err&&String(err.message||err)};}
 function vChat(){const c=curChat();
  let h='<h1 style="display:flex;align-items:center;gap:10px">Ask<button class="b p" style="margin-left:auto" onclick="newChat()">'+ic('plus')+' New chat</button></h1>';
  h+='<div class="chats">'+U.chats.map(ch=>'<span class="chip '+(ch.id===U.chatId?'c-ok':'')+'" style="cursor:pointer" onclick="openChat(\''+ch.id+'\')">'+esc(ch.title||'New chat')+' <button class="xd" title="Delete" onclick="event.stopPropagation();delChat(\''+ch.id+'\')">'+ic('x')+'</button></span>').join('')+'</div>';
- const msgs=c?c.msgs.map(m=>'<div class="cmsg '+(m.role==='user'?'cu':'cs')+'"><div class="cbody">'+(m.att&&m.att.length?'<div class="catts">'+m.att.map(a=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+'</span>').join('')+'</div>':'')+(m.pending?'\u2026':md(m.text))+(m.system?'<details class="cground"><summary>prompt</summary><pre class="cp">'+esc('system: '+m.system+'\n\nuser: '+m.user)+'</pre></details>':'')+(m.checks&&m.checks.length?'<details class="cground"><summary>checked (Murch pace + fold falsify)</summary>'+m.checks.map(x=>'<div class="ck '+x.standing+'">'+(x.standing==='supported'?'\u2713':x.standing==='partial'?'~':'\u26a0')+' '+esc(x.s)+'</div>').join('')+'</details>':'')+(m.facts&&m.facts.length?'<details class="cground"><summary>thinking ('+m.facts.length+')</summary>'+esc(m.facts.join('\n')).replace(/\n/g,'<br>')+'</details>':'')+'</div></div>').join(''):'';
+ const msgs=c?c.msgs.map(m=>'<div class="cmsg '+(m.role==='user'?'cu':'cs')+'"><div class="cbody">'+(m.att&&m.att.length?'<div class="catts">'+m.att.map(a=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+'</span>').join('')+'</div>':'')+(m.pending?'<span class="think">thinking\u2026</span>':md(m.text))+(m.system?'<details class="cground"><summary>prompt</summary><pre class="cp">'+esc('system: '+m.system+'\n\nuser: '+m.user)+'</pre></details>':'')+(m.checks&&m.checks.length?'<details class="cground"><summary>checked (Murch pace + fold falsify)</summary>'+m.checks.map(x=>'<div class="ck '+x.standing+'">'+(x.standing==='supported'?'\u2713':x.standing==='partial'?'~':'\u26a0')+' '+esc(x.s)+'</div>').join('')+'</details>':'')+(m.facts&&m.facts.length?'<details class="cground"><summary>thinking ('+m.facts.length+')</summary>'+esc(m.facts.join('\n')).replace(/\n/g,'<br>')+'</details>':'')+'</div></div>').join(''):'';
  const welcome='<div class="welcome"><div class="bmark">'+ic('chat-circle-text')+'</div><h2>Ask anything</h2><p class="note">A general assistant that can also answer about your files, tables and notes. Every reply is grounded and checked before it is spoken.</p></div>';
  const attrow=U.att.length?'<div class="catts">'+U.att.map((a,i)=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+' <button class="xd" onclick="detach('+i+')">'+ic('x')+'</button></span>').join('')+'</div>':'';
  const input='<div class="cinput">'+attrow+'<input id="cq" type="text" placeholder="Ask anything\u2026" onkeydown="if(event.key===\'Enter\')askSend()"><button class="b" title="Attach" onclick="pickAttach()">'+ic('paperclip')+'</button><button class="b p" onclick="askSend()">Send</button></div>';
