@@ -45,6 +45,13 @@ A trigger is an entry (`kind auto-trigger`): `manual`, `webhook` (`path`), `poll
 graph, and writes results back. Any number of workers can run; the claims coordinate them. The headless node
 runs this loop with `node app/headless.mjs --worker`.
 
+**Coordination is causal, not a clock.** Every entry the pharos weaves carries `seen` — the frontier of what
+its writer had observed, its lightcone. A claim for a trigger is written at a stable address
+(`auto-claim:<trigger>[:<event>]`), `of`-references the trigger it acts on, and is *satisfied* once a run
+entry causally references the claim (`of`). So we know not just *when* a device wanted to act, but *what
+world it believed it was acting in*: a device that had not yet seen another's claim claims concurrently, and
+the two claims surface as a conflict on the shared address (deterministically ordered by id), fully audited.
+
 ## The relational projection and the server
 
 `app/relational.mjs` folds the log into named tables (`materialize`) and answers a SQL subset

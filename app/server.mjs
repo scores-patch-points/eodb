@@ -19,7 +19,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { materialize, select, toSQLite, toJSON } from './relational.mjs';
-import { automations } from './worker.mjs';
+import { automations, processEvents } from './worker.mjs';
 import { openSpace } from './engine.mjs';
 import { fsBackend } from './fs-backend.mjs';
 
@@ -69,18 +69,10 @@ export function createServer(space, ctx = {}) {
         const wp = decodeURIComponent(wm[1]);
         const raw = (await readBody(req)).toString();
         let body; try { body = JSON.parse(raw); } catch { body = raw; }
-        space.append('auto-event+', { path: wp, body, ts: Date.now() });
-        const triggers = space.view().filter((e) => e.op === 'auto-trigger+' && e.body && e.body.type === 'webhook' && e.body.path === wp);
-        const { byName, byId } = automations(space);
-        const runs = [];
-        for (const t of triggers) {
-          const b = t.body;
-          const graph = byName.get(b.auto) || byId.get(b.auto);
-          if (!graph) continue;
-          const r = await space.runAutomation({ ...graph, trigger: { type: 'webhook', path: wp } }, { ...ctx, triggerId: b.id, triggerData: { path: wp, body, headers: req.headers } });
-          runs.push({ trigger: b.id, runId: r.runId, ok: r.ok });
-        }
-        return sendJson(res, 200, { path: wp, runs });
+        const ev = space.append('auto-event+', { path: wp, body, headers: req.headers, ts: Date.now() });
+        const pr = await processEvents(space, ctx);
+        const runs = pr.ran.filter((r) => r.event === ev.id).map((r) => ({ trigger: r.trigger, runId: r.runId, ok: r.ok }));
+        return sendJson(res, 200, { path: wp, event: ev.id, runs });
       }
 
       sendJson(res, 404, { error: 'not found' });
@@ -97,10 +89,26 @@ async function main() {
   if (!passphrase) { console.error('server needs a passphrase (--passphrase or $EODB_PASSPHRASE)'); process.exit(2); }
   const cells = JSON.parse(fs.readFileSync(path.join(here, 'vendor', 'pharos', 'cells.json'), 'utf8'));
   const names = JSON.parse(fs.readFileSync(path.join(here, 'vendor', 'node-names.json'), 'utf8'));
-  const space = await openSpace({ name: flags.name || 'eodb', backend: fsBackend(path.join(dir, 'store')), blobBackend: fsBackend(path.join(dir, 'blobs')), cells, names, passphrase, join: flags.join || undefined, autosync: false });
+  const routes = (flags.routes ? String(flags.routes).split(',') : []).map((r) => r.trim()).filter(Boolean);
+  const space = await openSpace({ name: flags.name || 'eodb', backend: fsBackend(path.join(dir, 'store')), blobBackend: fsBackend(path.join(dir, 'blobs')), cells, names, passphrase, join: flags.join || undefined, autosync: true, syncMs: Number(flags['sync-ms'] || 5000) });
+
+  // become part of the sync mesh: a founder shares (announcing routes), a guest already joined. Either way the server stays in sync.
+  if (space.role !== 'guest' && routes.length) { const link = await space.share({ routes }); process.stdout.write(JSON.stringify({ role: space.role, link }) + '\n'); }
+  else process.stdout.write(JSON.stringify({ role: space.role, peers: space.peers() }) + '\n');
+
   const port = Number(flags.port || 8852);
   const server = createServer(space);
   server.listen(port, '0.0.0.0', () => console.log(`eodb projection server on http://0.0.0.0:${port} (tables, SQL, export, webhooks)`));
+
+  // optional: this peer also acts as a worker — sync, claim due triggers / unhandled events, run, publish.
+  if (flags.worker) {
+    const { workerPass } = await import('./worker.mjs');
+    const ms = Number(flags['worker-ms'] || 30_000);
+    const pass = async () => { try { const r = await workerPass(space, {}); if (r.poll.length || r.events.length || r.errors.length) process.stdout.write(JSON.stringify({ pass: r }) + '\n'); } catch (e) { process.stderr.write('worker pass: ' + (e && e.message || e) + '\n'); } };
+    await pass();
+    setInterval(pass, ms);
+  }
+
   const stop = () => { server.close(); space.close(); process.exit(0); };
   process.on('SIGINT', stop); process.on('SIGTERM', stop);
 }

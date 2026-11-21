@@ -74,7 +74,7 @@ function addrOf(op, b) {
     case 'auto-node+': return `auto-node:${n()}`;
     case 'auto-trigger+': return `auto-trigger:${b.id}`;
     case 'auto-event+': return `auto-event:${n()}`;
-    case 'auto-claim+': return `auto-claim:${n()}`;
+    case 'auto-claim+': return b.event ? `auto-claim:${b.trigger}:${b.event}` : `auto-claim:${b.trigger}`;
     case 'project+': return `project:${b.id}`;
     case 'retract': return `retract:${b.of}`;
     default: throw new core.PharosError('UNKNOWN_OP', `unknown operation "${op}"`);
@@ -261,10 +261,11 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
   blobApiRef = blobApi;
   const space = {
     writer, rootPub: root ? root.pub : share.root, devicePub: dev.pub, name, blobs: blobApi, sha, first,
-    /** weave one page operation; returns it in the page's shape. Sync: the entry exists at once; signing and saving follow. */
-    append(op, body) {
+    /** weave one page operation; returns it in the page's shape. Sync: the entry exists at once; signing and saving follow. `of` links it causally. */
+    append(op, body, of) {
       if (!OPS[op]) throw new core.PharosError('UNKNOWN_OP', `unknown operation "${op}"`);
       body = clean(body); const [kind, cell] = OPS[op]; const spec = { cell, kind, addr: addrOf(op, body), body };
+      if (of && of.length) spec.of = of;
       if (op === 'retract') { spec.of = [body.of]; spec.body = { why: body.why || 'retract' }; }
       const e = core.weave(h, spec); soon();
       return shape(e, space.view().length);
@@ -341,7 +342,8 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
     async runAutomation(graph, ctx = {}) {
       const trigger = Automation.triggerOf(graph);
       const runId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-      space.append('auto-run+', { id: runId, auto: graph.name || null, trigger: trigger.type, triggerId: ctx.triggerId || null, ts: Date.now() });
+      const claimId = ctx.claimId || null;
+      space.append('auto-run+', { id: runId, auto: graph.name || null, trigger: trigger.type, triggerId: ctx.triggerId || null, eventId: ctx.eventId || null, claimId, ts: Date.now() }, claimId ? [claimId] : undefined);
       const result = await Automation.runAutomation(graph, { space, ...ctx });
       for (const id of result.order) {
         const r = result.results[id];
@@ -360,6 +362,10 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
     },
     /** read the audit trail: every automation definition, run, node result, trigger and claim, in order. */
     automationLog() { return space.view().filter((e) => ['auto+', 'auto-run+', 'auto-node+', 'auto-trigger+', 'auto-event+', 'auto-claim+'].includes(e.op)); },
+    /** the current causal frontier (heads) of the log — what any new entry will `see`, i.e. the lightcone of whoever acts now. */
+    frontier() { return core.fold(h).frontier; },
+    /** entries that competed on the same address from causally-concurrent writers (e.g. two devices claimed the same trigger). */
+    conflicts() { return core.fold(h).conflicts; },
     syncOnce, get role() { return guest ? 'guest' : share ? 'founder' : 'solo'; },   // live: a solo space becomes a founder's the moment it is shared
     /** devices seen in the log (the writer id before the tab part) */
     peers() { const d = new Set(); for (const e of core.entries(h)) if (!INFRA.has(e.kind) && KIND_OP[e.kind]) d.add(e.by.split('.').slice(0, e.by.startsWith('guest.') ? 2 : 1).join('.')); return [...d]; },
@@ -396,7 +402,7 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
   };
   function shape(e, seq) {
     const op = KIND_OP[e.kind];
-    return { id: e.id, writer: e.by, seq, ts: Date.parse(e.at), op, body: op === 'retract' ? { of: e.of[0], ...e.body } : e.body, sig: sigOf.get(e.id) || '', ok: okSet.has(e.id) };
+    return { id: e.id, writer: e.by, seq, ts: Date.parse(e.at), op, body: op === 'retract' ? { of: e.of[0], ...e.body } : e.body, of: e.of || [], seen: e.seen || [], sig: sigOf.get(e.id) || '', ok: okSet.has(e.id) };
   }
   if (share && autosync) startSync(syncMs);
   return space;

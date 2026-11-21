@@ -60,7 +60,7 @@ test('2. the ported log folded by the page\'s own fold() equals the original\'s 
 test('3. the view has the shape the page reads: id, writer, seq, ts, op, body; retract keeps body.of; infrastructure entries are hidden', async () => {
   const space = await open(mk()); const [first] = build(space); await space.settle();
   const v = space.view(); assert.equal(v.length, SCRIPT.length);
-  assert.deepEqual(Object.keys(v[0]).sort(), ['body', 'id', 'ok', 'op', 'seq', 'sig', 'ts', 'writer']);
+  assert.deepEqual(Object.keys(v[0]).sort(), ['body', 'id', 'of', 'ok', 'op', 'seen', 'seq', 'sig', 'ts', 'writer']);
   assert.equal(first.op, 'ws+'); assert.equal(v[0].seq, 1); assert.ok(Number.isFinite(v[0].ts));
   assert.ok(v.every((e) => !['frame', 'kind', 'signature', 'capability'].includes(e.op)));
   const r = space.append('retract', { of: v[0].id }); assert.equal(r.body.of, v[0].id);
