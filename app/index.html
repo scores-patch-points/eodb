@@ -187,6 +187,18 @@ td input{font:inherit;padding:2px 6px;border:1px solid var(--acc);border-radius:
 .au-node .ov{margin:2px 10px 8px;padding:5px 7px;background:#f4f3ee;border-radius:6px;font:11.5px/1.4 ui-monospace,Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:110px;overflow:auto}
 .au-svg{position:absolute;inset:0;pointer-events:none;z-index:1}
 .au-pal{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.arch-canvas{position:relative;height:430px;overflow:auto;border:1px solid var(--line);border-radius:12px;background:radial-gradient(circle at 50% 50%,#f3f1ea 0%,#faf9f6 70%)}
+.arch-svg{position:absolute;left:0;top:0}
+.arch-node{position:absolute;text-align:center;font-size:12px;z-index:2}
+.arch-node.space{background:var(--purbg);color:var(--pur);border:1px solid var(--pur);border-radius:999px;padding:4px 14px;font-weight:600}
+.arch-node.device{background:var(--card);border:1px solid var(--line2);border-radius:10px;padding:6px 10px;min-width:132px}
+.arch-node.device.self{border-color:var(--acc);box-shadow:0 0 0 3px var(--accbg)}
+.arch-node.device .nm{font-weight:600;font-size:13px}
+.arch-node.device .uid{display:block;font:11px ui-monospace,Menlo,monospace;color:var(--mut);margin-top:2px}
+.arch-node.device .you{font:10px ui-monospace,Menlo,monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--acc);margin-top:2px}
+.arch-node.transport{background:var(--card);border:1px solid var(--line2);border-radius:8px;padding:4px 10px;color:var(--ink2);display:inline-flex;gap:5px;align-items:center}
+.arch-node.transport .dot{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+.arch-node.transport.down .dot{background:var(--bad)}
 </style><style id="responsive">
 @media (max-width:800px){
  .app{flex-direction:column}
@@ -398,6 +410,35 @@ function autoLoad(w){AUTO={nodes:(w.body.nodes||[]).map(n=>({...n,fields:n.field
 function vAuto(){let h='<h1>Automations</h1><p class="sub">Connect nodes to drive other tools. An automation is saved as entries, so it re-runs under a better reader or model as new entries, never an overwrite.</p><div id="auto-pal"></div><div id="auto-canv"></div>';
  const saved=ENGINE.view().filter(e=>e.op==='auto+');if(saved.length){h+='<div class="gt">Saved</div>'+saved.map(w=>'<span class="chip c-ok" style="cursor:pointer;margin:2px" onclick="autoLoad(ENGINE.view().find(e=>e.id===\''+w.id+'\'))">'+esc(w.body.name||w.id)+'</span>').join('');}
  return h;}
+/* ================= archonograph ================= */
+function renderArchonograph(){
+  const g=ENGINE.networkGraph(), el=document.getElementById('arch-canvas'); if(!el)return;
+  const W=Math.max(el.clientWidth,560), H=430, cx=W/2, cy=H/2, pos={};
+  const spaceN=g.nodes.find(n=>n.kind==='space');
+  const devices=g.nodes.filter(n=>n.kind==='device');
+  const transports=g.nodes.filter(n=>n.kind==='transport');
+  if(spaceN)pos[spaceN.id]={x:cx,y:cy};
+  devices.forEach((n,i)=>{const a=2*Math.PI*i/Math.max(1,devices.length)-Math.PI/2;pos[n.id]={x:cx+112*Math.cos(a),y:cy+112*Math.sin(a)};});
+  transports.forEach((n,i)=>{const a=2*Math.PI*i/Math.max(1,transports.length)-Math.PI/2;pos[n.id]={x:cx+208*Math.cos(a),y:cy+208*Math.sin(a)};});
+  let svg='<svg class="arch-svg" width="'+W+'" height="'+H+'">';
+  for(const e of g.edges){const a=pos[e.from],b=pos[e.to];if(!a||!b)continue;
+    const col=e.kind==='member'?'var(--line2)':e.status==='down'?'var(--bad)':e.status==='inferred'?'var(--mut)':'var(--ok)';
+    const dash=e.kind==='member'?' stroke-dasharray="4 4"':e.status==='inferred'?' stroke-dasharray="3 3"':'';
+    svg+='<line x1="'+a.x+'" y1="'+a.y+'" x2="'+b.x+'" y2="'+b.y+'" stroke="'+col+'" stroke-width="2"'+dash+'/>';}
+  svg+='</svg>';
+  let html=svg;
+  for(const n of g.nodes){const p=pos[n.id];if(!p)continue;
+    if(n.kind==='space')html+='<div class="arch-node space" style="left:'+(p.x-34)+'px;top:'+(p.y-16)+'px">'+esc(n.label)+'</div>';
+    else if(n.kind==='device')html+='<div class="arch-node device'+(n.self?' self':'')+'" style="left:'+(p.x-66)+'px;top:'+(p.y-30)+'px"><div class="nm">'+nodeLabel(n.label)+'</div>'+(n.uuid?'<div class="uid">'+esc(n.uuid)+'</div>':'')+(n.self?'<div class="you">this device</div>':'')+'</div>';
+    else html+='<div class="arch-node transport'+(n.ok===false?' down':'')+'" style="left:'+(p.x-52)+'px;top:'+(p.y-13)+'px"><span class="dot"></span>'+esc(n.label)+'</div>';}
+  el.innerHTML=html;
+}
+function vArchonograph(){
+  let h=crumb(ic('git-branch')+' Archonograph')+'<h1>Archonograph</h1><p class="sub">Your space, the devices in it, and the routes that connect them. Each device carries a human-readable name and its UUID.</p>';
+  h+='<div class="card"><div class="arch-canvas" id="arch-canvas"></div></div>';
+  h+='<div class="note" style="margin-top:10px">This device — <b>'+nodeLabel(ENGINE.deviceName)+'</b> · UUID <span class="tag">'+esc(ENGINE.writer)+'</span>.</div>';
+  return h;
+}
 /* ================= render ================= */
 function render(){render0();narrowNav();}
 let NAVOPEN=false;
@@ -407,12 +448,13 @@ function narrowNav(){const on=matchMedia('(max-width:800px)').matches;document.b
 document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('aside .it, aside .wsh, aside .link')&&matchMedia('(max-width:800px)').matches)NAVOPEN=false;},true);
 addEventListener('resize',()=>{if(document.querySelector('aside'))narrowNav();});
 function render0(){side();tabbar();const m=document.getElementById('main');
- m.innerHTML=U.sel==='docs'?vDocs('doc'):U.sel==='notes'?vDocs('note'):/^doc:/.test(U.sel)?vDoc(U.sel.slice(4)):U.sel==='ws'?vWs():U.sel==='files'?vFiles():U.sel==='log'?vLog():U.sel==='match'?vMatch():U.sel==='profile'?vProfile():U.sel==='chat'?vChat():U.sel==='auto'?vAuto():vTable();
+ m.innerHTML=U.sel==='docs'?vDocs('doc'):U.sel==='notes'?vDocs('note'):/^doc:/.test(U.sel)?vDoc(U.sel.slice(4)):U.sel==='ws'?vWs():U.sel==='files'?vFiles():U.sel==='log'?vLog():U.sel==='match'?vMatch():U.sel==='profile'?vProfile():U.sel==='chat'?vChat():U.sel==='auto'?vAuto():U.sel==='arch'?vArchonograph():vTable();
  document.body.classList.toggle('viewing',!!U.view);
  if(U.sel==='files')wireDrop();
  if(U.sel==='profile')setTimeout(drawQr,0);
   if(U.sel==='chat')focusId('cq');
   if(U.sel==='auto')drawAuto();
+  if(U.sel==='arch')renderArchonograph();
   docFocus();
  const ed=document.getElementById('ed');if(ed){ed.focus();ed.select&&ed.select();}}
 function tabbar(){const t=document.getElementById('tabbar');if(!t)return;const onDoc=/^doc:/.test(U.sel);
@@ -426,6 +468,7 @@ function side(){const onDoc=/^doc:/.test(U.sel);
  h+='<div class="it '+(U.sel==='notes'||(onDoc&&(DOC(U.sel.slice(4))||{}).kind==='note')?'on':'')+'" onclick="U.sel=\'notes\';render()">'+ic('note-pencil')+' Notes<span class="n">'+wsDocs(U.ws,'note').length+'</span></div>';
   h+='<div class="it '+(U.sel==='chat'?'on':'')+'" onclick="U.sel=\'chat\';render()">'+ic('chat-circle-text')+' Ask<span class="n">'+U.chats.length+'</span></div>';
   h+='<div class="it '+(U.sel==='auto'?'on':'')+'" onclick="U.sel=\'auto\';render()">'+ic('git-branch')+' Automations</div>';
+  h+='<div class="it '+(U.sel==='arch'?'on':'')+'" onclick="U.sel=\'arch\';render()">'+ic('link-simple')+' Archonograph</div>';
  h+='<div class="side-h">SPACES</div>';
  for(const w of D.ws){const on=U.ws===w.id;
   h+='<div class="ws '+(on?'on':'')+'"><div class="wsh" onclick="goWs(\''+w.id+'\')">'+ic(on?'folder-open':'folder')+' '+esc(w.name)+'</div>';
@@ -1102,6 +1145,23 @@ function evaRules(answer){const v=[];const t=String(answer||'');
  if(/genuinely|honestly|straightforward/i.test(t))v.push('banned-word');
  if(t.length>600)v.push('too-long');
  return {ok:v.length===0,violations:v};}
+// voice(): the mouth (model) is not the voice. The voice mechanically cleans what the mouth said.
+function voice(raw){if(!raw)return '';let t=String(raw);
+ // strip emojis
+ t=t.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F000}-\u{1F02F}\u{1F0A0}-\u{1F0FF}\u{1F100}-\u{1F1FF}\u{1F200}-\u{1F2FF}\u{1F300}-\u{1F5FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F910}-\u{1F96B}\u{1F980}-\u{1F9E0}]/gu,'');
+ // strip markdown bullets
+ t=t.replace(/^[-*]\s+/gm,'');
+ // strip "as an AI" framing
+ t=t.replace(/as an (AI|language model|assistant)[^\n]*[.!?]?\s*/gi,'');
+ // strip leading "ANSWER:"
+ t=t.replace(/^ANSWER:\s*/i,'');
+ // admission: refuse repetition (prosify.js::admit — repeated sentences are refused, not kept)
+ const seen=new Set();const lines=t.split(/(?<=[.!?])\s+/);const kept=[];
+ for(const l of lines){const k=l.toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,60);if(k&&seen.has(k))continue;if(k)seen.add(k);kept.push(l);}
+ t=kept.join(' ');
+ // collapse multiple newlines
+ t=t.replace(/\n{3,}/g,'\n\n');
+ return t.trim();}
 // REC: re-ground the mouth's output — strip violations mechanically (the floor).
 function recRules(answer){let t=String(answer||'');
  t=t.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}]/gu,'');
@@ -1121,7 +1181,7 @@ async function ask(q,att,onChunk){const t=String(q||'').trim().toLowerCase();con
  // DEF the void: declare the instruction void (done above in defRules)
  let answer=null,err=null,mouth=null,recCount=0;
  try{mouth=await askModel(user,system,onChunk);}catch(e){err=e;}
- if(mouth){const eva=evaRules(mouth);if(eva.ok){answer=mouth;}else{recCount++;const rec=recRules(mouth);const eva2=evaRules(rec);answer=eva2.ok?rec:rec;}}
+ if(mouth){const eva=evaRules(mouth);if(eva.ok){answer=voice(mouth);}else{recCount++;const rec=recRules(mouth);const eva2=evaRules(rec);answer=eva2.ok?voice(rec):voice(rec);}}
  if(!answer)answer=fallbackAnswer(q,facts);
  const checks=gradeAnswer(answer,facts);checks.push({s:'DEF/EVA/REC: '+recCount+' re-ground'+(recCount===1?'':'s'),standing:recCount===0?'supported':'partial'});
  return {answer,mouth,facts,system,user,checks,err:err&&String(err.message||err)};}
