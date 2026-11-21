@@ -507,7 +507,16 @@ function render0(){side();tabbar();const m=document.getElementById('main');
 function tabbar(){const t=document.getElementById('tabbar');if(!t)return;const onDoc=/^doc:/.test(U.sel);
   const items=[['files','archive','Files',U.sel==='files'],['chat','chat-circle-text','Ask',U.sel==='chat'],['auto','git-branch','Automations',U.sel==='auto'],['docs','file-text','Docs',U.sel==='docs'||(onDoc&&(DOC(U.sel.slice(4))||{}).kind==='doc')],['notes','note-pencil','Notes',U.sel==='notes'||(onDoc&&(DOC(U.sel.slice(4))||{}).kind==='note')],['profile','user','Profile',U.sel==='profile']];
  t.innerHTML=items.map(([k,i,n,on])=>'<button class="t '+(on?'on':'')+'" onclick="U.view=null;U.open=null;U.sel=\''+k+'\';render()">'+ic(i)+n+'</button>').join('');}
-function side(){const onDoc=/^doc:/.test(U.sel);
+function side(){
+ if(U.sel==='chat'){
+  let h='<div class="brand">'+ic('chat-circle-text')+'<div>Ask<small>conversations &amp; projects</small></div></div>';
+  h+='<div style="display:flex;gap:6px;padding:10px 8px"><button class="b p" style="flex:1;justify-content:center" onclick="newChat()">'+ic('plus')+' Chat</button><button class="b" style="flex:1;justify-content:center" onclick="newProject()">'+ic('folder-open')+' Project</button></div>';
+  h+='<div class="corg" style="padding:0 4px">'+(chatTree()||'<div class="cempty">No conversations yet.</div>')+'</div>';
+  h+='<div class="side-foot"><div class="it" onclick="U.sel=\'files\';render()">'+ic('hard-drives')+' Database</div><div class="it" onclick="U.sel=\'profile\';render()">'+ic('user')+' Profile</div></div>';
+  document.getElementById('side').innerHTML=h;
+  return;
+ }
+ const onDoc=/^doc:/.test(U.sel);
  let h='<div class="brand">'+ic('hard-drives')+'<div>Your database<small>End-to-end encrypted</small></div></div>';
  h+='<div class="it '+(U.sel==='files'||U.sel==='match'?'on':'')+'" onclick="U.sel=\'files\';render()">'+ic('archive')+' Files<span class="n">'+wsFiles(U.ws).length+'</span></div>';
  h+='<div class="it '+(U.sel==='ws'?'on':'')+'" onclick="U.sel=\'ws\';render()">'+ic('table')+' Tables<span class="n">'+wsTables(U.ws).length+'</span></div>';
@@ -1389,6 +1398,7 @@ async function research(q){
  const answer=mouth?voice(mouth):(fallbackAnswer(q,facts));
  const checks=gradeAnswer(answer,facts);
  return {answer,facts,system:personaFor(q),user,checks,mouth};}
+function mechAnswer(q,att){const v=defVoid(q);const r=evaAgainst(v,att);if(r.filled)return {answer:r.answer,steps:r.steps,mech:true};const cross=mechCross(q);if(cross)return cross;return null;}
 async function ask(q,att,onChunk){const t=String(q||'').trim().toLowerCase();const greet=/^(hi|hello|hey|how are you|whats up|what's up|yo|sup|good (morning|afternoon|evening))\b/.test(t);
  if(!(att&&att.length)&&greet){return {answer:'Doing well \u2014 what can I help you with?',facts:[],system:personaFor(q),user:q,checks:[],mech:true};}
  const mech=mechAnswer(q,att);if(mech){return {answer:mech.answer,facts:[],system:'(mechanical \u2014 no model)',user:q,checks:[{s:mech.steps.join(' \u2192 '),standing:'supported'}],mech:true};}
@@ -1407,8 +1417,7 @@ async function ask(q,att,onChunk){const t=String(q||'').trim().toLowerCase();con
  const checks=gradeAnswer(answer,facts);checks.push({s:'DEF/EVA/REC: '+recCount+' re-ground'+(recCount===1?'':'s'),standing:recCount===0?'supported':'partial'});
  return {answer,mouth,facts,system,user,checks,err:err&&String(err.message||err)};}
 function vChat(){const c=curChat();
- let h='<h1 style="display:flex;align-items:center;gap:6px">Ask'+(c?'<button class="cicon" title="New thread here" aria-label="New thread" style="margin-left:auto" onclick="newThread()">'+ic('chat-text')+'</button>':'')+'<button class="cicon" title="New chat" aria-label="New chat" onclick="newChat()">'+ic('plus')+'</button><button class="cicon" title="New project" aria-label="New project" onclick="newProject()">'+ic('folder-open')+'</button></h1>';
- h+='<div class="corg">'+(chatTree()||'<div class="cempty">No conversations yet \u2014 start one.</div>')+'</div>';
+ let h='<h1 style="display:flex;align-items:center;gap:6px">Ask'+(c?'<button class="cicon" title="New thread here" aria-label="New thread" style="margin-left:auto" onclick="newThread()">'+ic('chat-text')+'</button>':'')+'</h1>';
  const msgs=c?c.msgs.map(m=>'<div class="cmsg '+(m.role==='user'?'cu':'cs')+'"><div class="cbody">'+(m.att&&m.att.length?'<div class="catts">'+m.att.map(a=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+'</span>').join('')+'</div>':'')+(m.pending?'<span class="think">thinking\u2026</span>':md(m.text))+(m.system?'<details class="cground"><summary>prompt</summary><pre class="cp">'+esc('system: '+m.system+'\n\nuser: '+m.user)+'</pre></details>':'')+(m.checks&&m.checks.length?'<details class="cground"><summary>checked (Murch pace + fold falsify)</summary>'+m.checks.map(x=>'<div class="ck '+x.standing+'">'+(x.standing==='supported'?'\u2713':x.standing==='partial'?'~':'\u26a0')+' '+esc(x.s)+'</div>').join('')+'</details>':'')+(m.facts&&m.facts.length?'<details class="cground"><summary>thinking ('+m.facts.length+')</summary>'+esc(m.facts.join('\n')).replace(/\n/g,'<br>')+'</details>':'')+'</div></div>').join(''):'';
  const welcome='<div class="welcome"><div class="bmark">'+ic('chat-circle-text')+'</div><h2>Ask anything</h2><p class="note">A general assistant that can also answer about your files, tables and notes. Every reply is grounded and checked before it is spoken.</p></div>';
  const attrow=U.att.length?'<div class="catts">'+U.att.map((a,i)=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+' <button class="xd" onclick="detach('+i+')">'+ic('x')+'</button></span>').join('')+'</div>':'';
