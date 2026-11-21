@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Your database</title>
+<title>Spaces</title>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.5.3/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hyperformula@3.5.0/dist/hyperformula.full.min.js"></script>
 <script src="./vendor/qrcode.js"></script>
@@ -13,14 +13,16 @@ import {fetchSharedFile} from './net.mjs';
 import * as B from './vendor/pharos/browser-store.mjs';
 const cells=await (await fetch('./vendor/pharos/cells.json')).json();
 const names=await (await fetch('./vendor/node-names.json')).json().catch(()=>[]);
-const log=await B.autoBackend('eodb-log'),blobs=await B.autoBackend('eodb-blobs');
 const join=new URLSearchParams(location.hash.slice(1)).get('join')||undefined;
 const file=new URLSearchParams(location.hash.slice(1)).get('file')||undefined;
-let keymode=null;try{keymode=await log.backend.getMeta('keymode');}catch(e){}
-const open=(opts={})=>{window.__ENGINE_READY=openSpace({name:'eodb',backend:log.backend,blobBackend:blobs.backend,cells,names,join,...opts}).then(e=>{window.ENGINE=e;window.__NET=()=>({graph:e.networkGraph(),dot:e.networkDot(),mermaid:e.networkMermaid()});if(join)history.replaceState(null,'',location.pathname+location.search);return e;},err=>{window.__ENGINE_ERROR=err;return null;});return window.__ENGINE_READY;};
+// spaces are host-level: each is its own pharos with its own keys and its own IndexedDB store, encrypted separately.
+const spaceName=()=>localStorage.getItem('eodb-space')||(JSON.parse(localStorage.getItem('eodb-spaces')||'[]')[0])||'Work';
+const keymodeFor=async(space)=>{try{return await (await B.autoBackend('eodb-log-'+(space||spaceName()))).backend.getMeta('keymode');}catch{return null;}};
+const open=async(opts={})=>{const space=opts.space||spaceName();const log=await B.autoBackend('eodb-log-'+space),blobs=await B.autoBackend('eodb-blobs-'+space);window.__SPACE=space;
+ window.__ENGINE_READY=openSpace({name:space,backend:log.backend,blobBackend:blobs.backend,cells,names,join,...opts}).then(e=>{window.ENGINE=e;window.__NET=()=>({graph:e.networkGraph(),dot:e.networkDot(),mermaid:e.networkMermaid()});if(join)history.replaceState(null,'',location.pathname+location.search);return e;},err=>{window.__ENGINE_ERROR=err;return null;});return window.__ENGINE_READY;};
 import * as KhoraText from './vendor/khora-text.js';window.KhoraText=KhoraText;
 window.PERSONA_RULES=await (await fetch('./persona/rules.json')).json().catch(()=>[]);
-window.__EODB_BOOT={join,file,keymode,open};
+window.__EODB_BOOT={join,file,open,keymodeFor};
 </script>
 <script>
 (function(){try{var t=localStorage.getItem('eodb-theme');if(t!=='light'&&t!=='dark')t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
@@ -454,7 +456,7 @@ async function autoRun(){const inc={};for(const e of AUTO.edges){const t=AUTO.no
 function autoSave(){if(!AUTO.nodes.length)return;const name='automation '+(ENGINE.view().filter(e=>e.op==='auto+').length+1);ENGINE.append('auto+',{name,nodes:AUTO.nodes,edges:AUTO.edges});drawAuto();}
 function autoClear(){AUTO={nodes:[],edges:[],conn:null,n:1};drawAuto();}
 function autoLoad(w){AUTO={nodes:(w.body.nodes||[]).map(n=>({...n,fields:n.fields||{}})),edges:w.body.edges||[],conn:null,n:1+(w.body.nodes||[]).length};drawAuto();}
-function vAuto(){let h='<h1>Automations</h1><p class="sub">Connect nodes to drive other tools. An automation is saved as entries, so it re-runs under a better reader or model as new entries, never an overwrite.</p><div id="auto-pal"></div><div id="auto-canv"></div>';
+function vAuto(){let h=crumb(ic('git-branch')+' Automations')+'<h1>Automations</h1><p class="sub">Connect nodes to drive other tools. An automation is saved as entries, so it re-runs under a better reader or model as new entries, never an overwrite.</p><div id="auto-pal"></div><div id="auto-canv"></div>';
  const saved=ENGINE.view().filter(e=>e.op==='auto+');if(saved.length){h+='<div class="gt">Saved</div>'+saved.map(w=>'<span class="chip c-ok" style="cursor:pointer;margin:2px" onclick="autoLoad(ENGINE.view().find(e=>e.id===\''+w.id+'\'))">'+esc(w.body.name||w.id)+'</span>').join('');}
  return h;}
 /* ================= network ================= */
@@ -507,6 +509,15 @@ function render0(){side();tabbar();const m=document.getElementById('main');
 function tabbar(){const t=document.getElementById('tabbar');if(!t)return;const onDoc=/^doc:/.test(U.sel);
   const items=[['files','archive','Files',U.sel==='files'],['chat','chat-circle-text','Ask',U.sel==='chat'],['auto','git-branch','Automations',U.sel==='auto'],['docs','file-text','Docs',U.sel==='docs'||(onDoc&&(DOC(U.sel.slice(4))||{}).kind==='doc')],['notes','note-pencil','Notes',U.sel==='notes'||(onDoc&&(DOC(U.sel.slice(4))||{}).kind==='note')],['profile','user','Profile',U.sel==='profile']];
  t.innerHTML=items.map(([k,i,n,on])=>'<button class="t '+(on?'on':'')+'" onclick="U.view=null;U.open=null;U.sel=\''+k+'\';render()">'+ic(i)+n+'</button>').join('');}
+function listSpaces(){try{return JSON.parse(localStorage.getItem('eodb-spaces')||'[]');}catch{return [];}}
+function currentSpace(){return localStorage.getItem('eodb-space')||listSpaces()[0]||'Work';}
+function createSpace(n){n=String(n||'').trim()||'New space';const s=listSpaces();if(!s.includes(n)){s.push(n);localStorage.setItem('eodb-spaces',JSON.stringify(s));}localStorage.setItem('eodb-space',n);return n;}
+function switchSpace(n){localStorage.setItem('eodb-space',n);location.reload();}
+function addSpace(){const n=prompt('New space name');if(n){createSpace(n);location.reload();}}
+function spaceSwitcher(){const cur=currentSpace();let h='';
+ for(const s of listSpaces())h+='<div class="it sp '+(s===cur?'on':'')+'" data-space="'+esc(s)+'" onclick="switchSpace(this.dataset.space)">'+(s===cur?'●':'○')+' '+esc(s)+'</div>';
+ h+='<div class="it sp" onclick="addSpace()">'+ic('plus-circle')+' New space</div>';
+ return h;}
 function side(){
  if(U.sel==='chat'){
   let h='<div class="brand">'+ic('chat-circle-text')+'<div>Ask<small>conversations &amp; projects</small></div></div>';
@@ -517,7 +528,8 @@ function side(){
   return;
  }
  const onDoc=/^doc:/.test(U.sel);
- let h='<div class="brand">'+ic('hard-drives')+'<div>Your database<small>End-to-end encrypted</small></div></div>';
+ let h='<div class="brand">'+ic('hard-drives')+'<div>Spaces<small>encrypted separately</small></div></div>';
+ h+=spaceSwitcher();
  h+='<div class="it '+(U.sel==='files'||U.sel==='match'?'on':'')+'" onclick="U.sel=\'files\';render()">'+ic('archive')+' Files<span class="n">'+wsFiles(U.ws).length+'</span></div>';
  h+='<div class="it '+(U.sel==='ws'?'on':'')+'" onclick="U.sel=\'ws\';render()">'+ic('table')+' Tables<span class="n">'+wsTables(U.ws).length+'</span></div>';
  h+='<div class="it '+(U.sel==='docs'||(onDoc&&(DOC(U.sel.slice(4))||{}).kind==='doc')?'on':'')+'" onclick="U.sel=\'docs\';render()">'+ic('file-text')+' Documents<span class="n">'+wsDocs(U.ws,'doc').length+'</span></div>';
@@ -525,7 +537,7 @@ function side(){
   h+='<div class="it '+(U.sel==='chat'?'on':'')+'" onclick="U.sel=\'chat\';render()">'+ic('chat-circle-text')+' Ask<span class="n">'+U.chats.length+'</span></div>';
   h+='<div class="it '+(U.sel==='auto'?'on':'')+'" onclick="U.sel=\'auto\';render()">'+ic('git-branch')+' Automations</div>';
   h+='<div class="it '+(U.sel==='net'?'on':'')+'" onclick="U.sel=\'net\';render()">'+ic('link-simple')+' Network</div>';
- h+='<div class="side-h">SPACES</div>';
+ h+='<div class="side-h">DATABASES</div>';
  for(const w of D.ws){const on=U.ws===w.id;
   h+='<div class="ws '+(on?'on':'')+'"><div class="wsh" onclick="goWs(\''+w.id+'\')">'+ic(on?'folder-open':'folder')+' '+esc(w.name)+'</div>';
   if(on)h+=wsTables(w.id).map(t=>'<div class="it sub '+(U.sel===t.id?'on':'')+'" onclick="goTb(\''+t.id+'\')">'+ic('caret-right')+' '+esc(t.name)+'<span class="n">'+t.r.length+'</span></div>').join('');
@@ -538,9 +550,9 @@ function goWs(id){U.ws=id;U.sel='ws';U.adding=null;render();}
 function goTb(id){U.sel=id;U.tab='data';U.edit=null;render();}
 async function newTb(){const n=(document.getElementById('nt').value||'').trim()||'Untitled table';const id=uid('t');U.adding=null;
  await appendQ('tb+',{id,ws:U.ws,name:n});for(const f of [{n:'Name',t:'text'},{n:'Notes',t:'longtext'}])await appendQ('fld+',{tb:id,id:uid('f'),...f});D=fold();goTb(id);}
-async function newWs(){const n=(document.getElementById('nw').value||'').trim()||'Untitled workspace';const id=uid('w');U.adding=null;await appendQ('ws+',{id,name:n});D=fold();goWs(id);}
-const crumb=a=>'<div class="crumb"><button class="lk" onclick="goHome()">'+ic('folder-open')+' '+esc(W().name)+'</button>'+(a?' '+ic('caret-right')+' '+a:'')+'</div>';
-function goHome(){U.sel='ws';render();}/* ---- workspace home ---- */
+async function newWs(){const n=(document.getElementById('nw').value||'').trim()||'Untitled database';const id=uid('w');U.adding=null;await appendQ('ws+',{id,name:n});D=fold();goWs(id);}
+const crumb=a=>'<div class="crumb"><button class="lk" onclick="goHome()">'+ic('hard-drives')+' Database</button>'+(a?' '+ic('caret-right')+' '+a:'')+'</div>';
+function goHome(){U.sel='ws';render();}/* ---- database home ---- */
 function vWs(){const tbs=wsTables(U.ws);
  let h=crumb(ic('table')+' Tables')+'<h1>Tables</h1>'+(tbs.length?'<div class="types">'+tbs.map(t=>'<div class="ty" onclick="goTb(\''+t.id+'\')">'+ic('table')+'<div><b>'+esc(t.name)+'</b>'+(t.std?' <span class="chip c-n">'+t.std+'</span>':'')+'<small>'+t.f.length+' fields · '+t.r.length+' rows</small></div></div>').join('')+'</div>':'<p class="note">No tables yet.</p>');
  return h;}
@@ -563,11 +575,17 @@ function vData(t){const vals=computeTable(t);
 function startEdit(rid,fid,ty,tb){if(ty==='checkbox'){const r=TB(tb).r.find(x=>x.id===rid);act('cell=',{tb,rid,fid,v:!r.v[fid]});return;}U.edit={rid,fid};render();}
 function commit(val,rid,fid,ty,tb){if(!U.edit)return;U.edit=null;let v=val;if(['number','currency','percent','rating'].includes(ty)){const n=Number(String(val).replace(/,/g,''));v=val===''?'':isNaN(n)?val:n;}act('cell=',{tb,rid,fid,v});}
 function vFields(t){
- let h='<p class="sub">Each field has a <b>type</b> (how it is stored) and a <b>meaning</b> (what it stands for). Adding or changing a field appends an entry. Computed fields keep their definition, not stored values.</p><div class="card" style="padding:0">';
- h+=t.f.map(f=>{const x=ft(f.t),mm=f.m&&byId(f.m);return '<div class="fh" style="padding:11px 14px;border-bottom:1px solid var(--line)"><span style="width:190px"><b>'+esc(f.n)+'</b></span><span class="chip c-n">'+ic(x.i)+' '+x.n+'</span>'+(x.c?'<span class="chip c-p">'+ic('function')+' computed</span>':'')+
+ let h='<p class="sub">Each field has a <b>type</b> (how it is stored) and a <b>meaning</b> (what it stands for). Rename a field or change its type inline — each change appends an entry, nothing is overwritten. Formula fields compute their values.</p><div class="card" style="padding:0">';
+ h+=t.f.map(f=>{const x=ft(f.t),mm=f.m&&byId(f.m);return '<div class="fh" style="padding:11px 14px;border-bottom:1px solid var(--line);gap:8px">'+
+  '<input type="text" value="'+esc(f.n)+'" onchange="renameField(\''+t.id+'\',\''+f.id+'\',this.value)" title="Rename field" style="width:170px;font-weight:600;font:inherit;border:1px solid transparent;background:transparent;border-radius:6px;padding:4px 8px" onfocus="this.style.borderColor=\'var(--acc)\';this.style.background=\'var(--s2)\'" onblur="this.style.borderColor=\'transparent\';this.style.background=\'transparent\'">'+
+  '<select onchange="act(\'fld=\',{tb:\''+t.id+'\',id:\''+f.id+'\',set:{t:this.value}})" title="Field type" style="font:inherit;border:1px solid var(--line);background:var(--s1);color:var(--ink);border-radius:6px;padding:4px 8px">'+FT.map(o=>'<option value="'+o.id+'"'+(o.id===f.t?' selected':'')+'>'+o.n+'</option>').join('')+'</select>'+
+  (f.t==='formula'?'<span class="chip c-p">'+ic('function')+' computed</span>':'')+
   '<span>'+(mm?'<span class="chip c-ok">'+ic('seal-check')+' '+mm.label+'</span> <span class="note">'+mm.vocab+' '+mm.ver+'</span>':'<span class="chip c-n">'+ic('tag')+' Local meaning</span>')+'</span>'+
-  (f.t==='formula'?'<span style="margin-left:auto;display:flex;gap:6px;align-items:center"><span class="note">=</span><input type="text" class="mono" style="width:260px" value="'+esc(f.x||'')+'" onchange="act(\'fld=\',{tb:\''+t.id+'\',id:\''+f.id+'\',set:{x:this.value}})"></span>':'')+(f.to?'<span class="note" style="margin-left:auto">links to '+f.to+'</span>':'')+'</div>';}).join('');
+  (f.t==='formula'?'<span style="margin-left:auto;display:flex;gap:6px;align-items:center;flex:1"><span class="note">=</span><input type="text" class="mono" style="flex:1;min-width:120px" value="'+esc(f.x||'')+'" placeholder="e.g. {Amount} * 2 or TODAY()" onchange="act(\'fld=\',{tb:\''+t.id+'\',id:\''+f.id+'\',set:{x:this.value}})"></span>':'')+
+  (f.to?'<span class="note" style="margin-left:auto">links to '+f.to+'</span>':'')+
+ '</div>';}).join('');
  return h+'</div><div style="margin-top:12px"><button class="b p" onclick="openTypes()">'+ic('plus')+' Add field</button></div>';}
+function renameField(tb,id,v){v=String(v||'').trim();if(v)act('fld=',{tb,id,set:{n:v}});}
 function openTypes(){const gs=[...new Set(FT.map(x=>x.g))];
  document.getElementById('sheet').innerHTML='<div class="fh"><h2>Choose a field type</h2><button class="b g" style="margin-left:auto" onclick="closeM()">'+ic('x')+'</button></div><p class="note">Types follow Amino (Airtable-style) and the EO field definitions.</p>'+gs.map(g=>'<div class="gt">'+g.toUpperCase()+'</div><div class="types">'+FT.filter(x=>x.g===g).map(x=>'<div class="ty" onclick="addField(\''+x.id+'\')">'+ic(x.i)+'<div><b>'+x.n+'</b>'+(x.c?' <span class="chip c-p">computed</span>':'')+'<small>'+x.d+'</small></div></div>').join('')+'</div>').join('');
  document.getElementById('modal').classList.add('on');}
@@ -611,7 +629,7 @@ async function take(list){let dup=0,added=0;for(const f of list){const bytes=new
 function virtList(){const out=[];const ws=U.ws;
  for(const t of wsTables(ws)){out.push({key:'csv:'+t.id,name:t.name.toLowerCase().replace(/\W+/g,'-')+'.csv',i:'file-csv',d:'Table as spreadsheet, formulas evaluated'});out.push({key:'json:'+t.id,name:t.name.toLowerCase().replace(/\W+/g,'-')+'.json',i:'file-code',d:'Table as JSON, standard terms as keys'});}
  for(const f of wsFiles(ws)){if(D.maps[f.hash])out.push({key:'sssom:'+f.hash,name:f.name.replace(/\.csv$/i,'')+'.sssom.tsv',i:'file-text',d:'Mapping decisions in the SSSOM table format'});}
- out.push(...virtIngest(ws));out.push(...virtDocs(ws));out.push({key:'md:'+ws,name:'workspace-summary.md',i:'file-text',d:'Readable summary of this workspace'});out.push({key:'log:'+ws,name:'activity-log.jsonl',i:'scroll',d:'The raw signed log, one entry per line'});return out;}
+ out.push(...virtIngest(ws));out.push(...virtDocs(ws));out.push({key:'md:'+ws,name:'database-summary.md',i:'file-text',d:'Readable summary of this database'});out.push({key:'log:'+ws,name:'activity-log.jsonl',i:'scroll',d:'The raw signed log, one entry per line'});return out;}
 function renderVirtual(v){const [k,id]=v.key.split(':');
  if(k==='csv'){const t=TB(id),vals=computeTable(t);return toCsv([t.f.map(f=>f.n)].concat(vals.map(r=>r.map(x=>x==null?'':typeof x==='object'?'#ERROR':x))));}
  if(k==='json'){const t=TB(id),vals=computeTable(t);return JSON.stringify(vals.map(r=>Object.fromEntries(t.f.map((f,i)=>[f.m||f.n,r[i]==null?null:typeof r[i]==='object'?'#ERROR':r[i]]))),null,2);}
@@ -663,7 +681,7 @@ function choose(id){closeM();act('map',mapBody(U.pickCol,'confirmed',id,U.pickRe
 async function land(){const src=U.src,s=srcOf(src),f=D.files.find(x=>x.hash===src),m=mapsFor(src);
  const groups={};s.cols.forEach((c,i)=>{const e=m[c];if(e&&e.status==='confirmed'){const t=byId(e.term);(groups[t.tb]=groups[t.tb]||[]).push({c,i,t,e});}});
  if(!Object.keys(groups).length)return;
- /* retract earlier landings of this same file in this workspace, so re-landing replaces */
+ /* retract earlier landings of this same file in this database, so re-landing replaces */
  const old=new Set();D.tb.filter(t=>t.ws===U.ws).forEach(t=>t.r.forEach(r=>{if(r.src&&r.src.file===src)old.add(r.eid);}));
  for(const eid of old)await appendQ('retract',{of:eid});
  D=fold();let total=0;
@@ -687,13 +705,13 @@ function vDrift(){const done=U.driftDone;let h='<h2>A new copy of the file arriv
 async function driftOk(){U.driftDone=true;await act('map',{src:SEED_HASH,col:'award_end',status:'local',term:'award_end',rel:null,c:null,by:'You',note:'New column in December file'});}
 /* ================= LOG inspector and time travel ================= */
 function sumE(e){const b=e.body;const at=id=>{const i=LOG.findIndex(x=>x.id===id);return i<0?'?':'#'+(i+1);};
- switch(e.op){case 'ws+':return 'Workspace "'+b.name+'"';case 'tb+':return 'Table "'+b.name+'"';case 'fld+':return 'Field "'+b.n+'" ('+ft(b.t).n+')';case 'fld=':return 'Field changed: '+Object.keys(b.set).join(', ');
+ switch(e.op){case 'ws+':return 'Database "'+b.name+'"';case 'tb+':return 'Table "'+b.name+'"';case 'fld+':return 'Field "'+b.n+'" ('+ft(b.t).n+')';case 'fld=':return 'Field changed: '+Object.keys(b.set).join(', ');
   case 'row+':return 'Row added';case 'rows+':return b.rows.length+' rows'+(b.src?' from '+b.src.name:'');case 'cell=':return 'Cell set to "'+String(b.v).slice(0,24)+'"';case 'file+':return 'File "'+b.name+'"'+(b.derived?' (kept copy of virtual file)':'');
   case 'doc+':return (b.kind==='note'?'Note':'Document')+' "'+b.title+'"';case 'doc=':return b.font?'Font set to '+b.font:'Renamed to "'+b.title+'"';case 'blk+':return 'New paragraph';case 'cmt+':return b.parent?'Reply to a comment':'Comment added';case 'cmt=':return b.resolved?'Comment resolved':'Comment reopened';case 'share+':return 'Shared with '+b.who+' ('+b.role+')';case 'blk=':return b.done!=null?'To-do '+(b.done?'checked':'unchecked'):b.t?'Paragraph set to '+(BT[b.t]||b.t):'Paragraph edited';case 'voice+':return 'Voice note attached';case 'read':return 'Read "'+((D.files.find(f=>f.hash===b.hash)||{}).name||b.hash.slice(0,8))+'" as '+b.kind+' ('+b.tier+')';case 'map':return b.col+' → '+(b.term||b.status)+' ['+b.status+']';case 'retract':return 'Retracts '+at(b.of);default:return e.op;}}
 function vLog(){const k=U.tt==null?LOG.length:U.tt,S=fold(k);
- let h='<div class="crumb">'+ic('hard-drives')+' Your database '+ic('caret-right')+' '+ic('scroll')+' Activity log</div><h1>Activity log</h1><p class="sub">This list and the file bytes are the whole database. Workspaces, tables, fields, rows, mappings and virtual files are all folded from it.</p>';
+ let h='<div class="crumb">'+ic('hard-drives')+' Spaces '+ic('caret-right')+' '+ic('scroll')+' Activity log</div><h1>Activity log</h1><p class="sub">This list and the file bytes are the whole database. Databases, tables, fields, rows, mappings and virtual files are all folded from it.</p>';
  h+='<div class="row"><div class="grow"><div class="card"><div class="fh"><b>'+ic('key')+' This device\'s key</b><span class="chip '+(ENGINE.report().unsigned?'c-w':'c-ok')+'">'+(ENGINE.report().unsigned?ENGINE.report().unsigned+' signing':ic('shield-check')+' all signed')+'</span></div><div class="note" style="margin-top:6px">Writer <span class="tag">'+esc(ENGINE.writer)+'</span>, Ed25519 through a device-key grant. Every entry is content-addressed (SHA-256), signed, and saved encrypted on this device ('+esc(ENGINE.report().backend)+'). Another tab sees your changes live; a cell edited in two places at once keeps both edits in the log.</div></div>';
- h+=vShare();h+='<div class="gt">TIME TRAVEL</div><div class="card"><input type="range" min="0" max="'+LOG.length+'" value="'+k+'" oninput="U.tt=+this.value===LOG.length?null:+this.value;render()"><div class="note" style="margin:6px 0">'+(k===LOG.length?'Now, entry #'+k:'Folded up to entry #'+k+' of '+LOG.length)+'</div><div class="fh"><span class="chip c-n">'+S.ws.length+' workspaces</span><span class="chip c-n">'+S.tb.length+' tables</span><span class="chip c-n">'+S.tb.reduce((a,t)=>a+t.r.length,0)+' rows</span><span class="chip c-n">'+S.files.length+' files</span><span class="chip c-n">'+Object.values(S.maps).reduce((a,m)=>a+Object.keys(m).length,0)+' column decisions</span></div></div></div>';
+ h+=vShare();h+='<div class="gt">TIME TRAVEL</div><div class="card"><input type="range" min="0" max="'+LOG.length+'" value="'+k+'" oninput="U.tt=+this.value===LOG.length?null:+this.value;render()"><div class="note" style="margin:6px 0">'+(k===LOG.length?'Now, entry #'+k:'Folded up to entry #'+k+' of '+LOG.length)+'</div><div class="fh"><span class="chip c-n">'+S.ws.length+' databases</span><span class="chip c-n">'+S.tb.length+' tables</span><span class="chip c-n">'+S.tb.reduce((a,t)=>a+t.r.length,0)+' rows</span><span class="chip c-n">'+S.files.length+' files</span><span class="chip c-n">'+Object.values(S.maps).reduce((a,m)=>a+Object.keys(m).length,0)+' column decisions</span></div></div></div>';
  h+='<div class="grow"><div class="gt">ENTRIES (newest first)</div><div class="wrap" style="max-height:560px"><table><thead><tr><th>#</th><th>Entry</th><th>Id</th><th></th></tr></thead><tbody>'+LOG.slice().reverse().slice(0,80).map(e=>'<tr style="'+(e.seq>k?'opacity:.35':'')+'"><td>'+e.seq+'</td><td>'+esc(sumE(e))+'</td><td><span class="tag">'+e.id.slice(0,8)+'</span></td><td>'+(e.ok?'<span class="ok" title="signature verified">'+ic('signature')+'</span>':'<span class="note">unsigned</span>')+'</td></tr>').join('')+'</tbody></table></div></div></div>';
  return h;}
 /* ================= INGEST: every file is stored; what can be read gets a reading in the log ================= */
@@ -883,7 +901,7 @@ const COVER=[
  ['Anything else: 7z, RAR, executables, Photoshop, unknown binaries','Kept','Fingerprint, size, entropy, printable strings','No reader yet. Bytes are safe and addressable; a reader can be added later and run over what is already stored']];
 function vCoverage(){return '<div class="gt">WHAT HAPPENS TO EACH KIND OF FILE</div><div class="wrap"><table><thead><tr><th>File kinds</th><th>In this page</th><th>What comes out</th><th>The full reader (real build)</th></tr></thead><tbody>'+COVER.map(c=>'<tr><td>'+esc(c[0])+'</td><td>'+(x=>'<span class="chip '+x[0]+'">'+ic(x[1])+' '+esc(c[1])+'</span>')(TIERS[c[1].startsWith('Read')?'read':c[1]==='Kept'?'kept':'described'])+'</td><td class="note">'+esc(c[2])+'</td><td class="note">'+esc(c[3])+'</td></tr>').join('')+'</tbody></table></div><p class="note" style="margin-top:8px">Every file is stored whatever its kind. Reading is a second step that never blocks the first, so no file is ever refused. A file nobody can read yet is not lost; it is waiting.</p>';}
 function virtIngest(ws){const out=[];for(const f of wsFiles(ws)){const rs=READS(f.hash);if(!rs.length)continue;out.push({key:'reading:'+f.hash,name:f.name+'.reading.json',i:'eye',d:'What was found in this file, and under which setting'});if(rs.some(r=>r.textHash))out.push({key:'text:'+f.hash,name:f.name.replace(/\.[^.]*$/,'')+'.txt',i:'text-aa',d:'The text that was read out of it'});}
- out.push({key:'coverage:'+ws,name:'reading-coverage.md',i:'list-checks',d:'Every file in this workspace and how far it has been read'});return out;}
+ out.push({key:'coverage:'+ws,name:'reading-coverage.md',i:'list-checks',d:'Every file in this database and how far it has been read'});return out;}
 function renderIngest(k,id){
  if(k==='reading'){const rs=READS(id);return JSON.stringify(rs.map(r=>({frame:r.frame,frameId:r.frameId,kind:r.kind,mime:r.mime,tier:r.tier,facts:r.facts,flags:r.flags,textFingerprint:r.textHash,logEntry:r.eid})),null,2);}
  if(k==='text'){const rs=READS(id).filter(r=>r.textHash);const r=rs[rs.length-1];const b=r&&BLOBS.get(r.textHash);return b?new TextDecoder().decode(b.bytes):'';}
@@ -1032,20 +1050,23 @@ async function boot(){
  const B=await waitBoot();
  if(B.file){return openSharedFile(B.file);}
  if(B.join){bootAnim('join');ENGINE=await B.open({});}
- else if(B.keymode==='passphrase'){
-  let wrong=false;
-  while(true){
-   const r=await askPassphrase('unlock',wrong?'Wrong password \u2014 try again':null);
-   bootAnim('unlock');ENGINE=await B.open({passphrase:r.passphrase});
-   if(ENGINE)break;
-   if(!/wrong passphrase/i.test((window.__ENGINE_ERROR&&window.__ENGINE_ERROR.message)||''))failOpen();
-   wrong=true;
+ else{
+  const keymode=await B.keymodeFor();
+  if(keymode==='passphrase'){
+   let wrong=false;
+   while(true){
+    const r=await askPassphrase('unlock',wrong?'Wrong password \u2014 try again':null);
+    bootAnim('unlock');ENGINE=await B.open({passphrase:r.passphrase});
+    if(ENGINE)break;
+    if(!/wrong passphrase/i.test((window.__ENGINE_ERROR&&window.__ENGINE_ERROR.message)||''))failOpen();
+    wrong=true;
+   }
   }
+  else if(keymode===undefined){
+   const r=await askPassphrase('set');bootAnim('setup');ENGINE=await B.open(r.skip?{}:{passphrase:r.passphrase});if(!ENGINE)failOpen();
+  }
+  else{bootAnim('unlock');ENGINE=await B.open({});if(!ENGINE)failOpen();}
  }
- else if(B.keymode===undefined){
-  const r=await askPassphrase('set');bootAnim('setup');ENGINE=await B.open(r.skip?{}:{passphrase:r.passphrase});if(!ENGINE)failOpen();
- }
- else{bootAnim('unlock');ENGINE=await B.open({});if(!ENGINE)failOpen();}
  const rep=ENGINE.report();bootDone('Unlocked \u00b7 encrypted on '+rep.backend+' \u00b7 '+rep.entries+' entries');await new Promise(r=>setTimeout(r,420));
  refreshLog();
  const ids=[...JSON.stringify(LOG.map(e=>e.body)).matchAll(/"[a-z]{1,3}(\d+)"/g)].map(m=>+m[1]).filter(n=>n>=100);CNT=ids.length?Math.max(...ids):CNT;
@@ -1218,7 +1239,7 @@ function retrieve(q,att){const tbs=wsTables(U.ws),fl=wsFiles(U.ws),ds=wsDocs(U.w
  cand.sort((a,b)=>b.sc-a.sc);
  let out=[],total=0;
  for(const c of cand){if(out.length>=6||total+c.str.length>1400)break;out.push(c.str);total+=c.str.length;}
- if(!out.length)out.push('workspace "'+W().name+'" has '+tbs.length+' tables, '+fl.length+' files, '+ds.length+' docs.');
+ if(!out.length)out.push('database "'+W().name+'" has '+tbs.length+' tables, '+fl.length+' files, '+ds.length+' docs.');
  return out;}
 function md(s){if(!s)return'';const codes=[];let t=String(s).replace(/```([\s\S]*?)```/g,(m,c)=>{codes.push(c);return '\u0000'+(codes.length-1)+'\u0000';});t=esc(t);
  t=t.replace(/`([^`]+)`/g,'<code>$1</code>');
@@ -1294,7 +1315,7 @@ function evaAgainst(v,att){const steps=[];const tbs=wsTables(U.ws),fl=wsFiles(U.
  if(v.slot==='thing'){
   // list: if the question asks to list/show, return what's there
   const asksList=anchor.some(w=>['list','show','what','all'].includes(w));
-  if(asksList&&!terms.length){steps.push('listed workspace overview');return {filled:true,answer:W().name+': '+tbs.length+' tables, '+fl.length+' files, '+ds.length+' docs/notes.',steps};}
+  if(asksList&&!terms.length){steps.push('listed database overview');return {filled:true,answer:W().name+': '+tbs.length+' tables, '+fl.length+' files, '+ds.length+' docs/notes.',steps};}
   // search: if there are search terms, search the ground
   if(terms.length){
    const hits=[];
@@ -1406,6 +1427,9 @@ async function research(q){
  const checks=gradeAnswer(answer,facts);
  return {answer,facts,system:personaFor(q),user,checks,mouth};}
 function mechAnswer(q,att){const v=defVoid(q);const r=evaAgainst(v,att);if(r.filled)return {answer:r.answer,steps:r.steps,mech:true};const cross=mechCross(q);if(cross)return cross;return null;}
+// conversation recall: the recent messages, plus any older message that shares a content word with the question.
+// A rolling window keeps short-term coherence; keyword recall reaches back across a long conversation.
+function chatContext(q,c){if(!c)return'';const done=c.msgs.filter(m=>m.text&&!m.pending);if(!done.length)return'';const recent=done.slice(-12);const toks=askToks(q).filter(w=>w.length>4);const older=done.slice(0,-12);const rec=[];if(toks.length&&older.length){for(const m of older){const mt=(m.text||'').toLowerCase();const h=toks.filter(w=>mt.includes(w)).length;if(h)rec.push({m,h});}rec.sort((a,b)=>b.h-a.h);}const parts=[];if(rec.length)parts.push('Recalled from earlier:\n'+rec.slice(0,4).map(r=>(r.m.role==='user'?'User: ':'Assistant: ')+r.m.text).join('\n'));parts.push('Recent:\n'+recent.map(m=>(m.role==='user'?'User: ':'Assistant: ')+m.text).join('\n'));return parts.join('\n\n');}
 async function ask(q,att,onChunk){const t=String(q||'').trim().toLowerCase();const greet=/^(hi|hello|hey|how are you|whats up|what's up|yo|sup|good (morning|afternoon|evening))\b/.test(t);
  if(!(att&&att.length)&&greet){return {answer:'Doing well \u2014 what can I help you with?',facts:[],system:personaFor(q),user:q,checks:[],mech:true};}
  const mech=mechAnswer(q,att);if(mech){return {answer:mech.answer,facts:[],system:'(mechanical \u2014 no model)',user:q,checks:[{s:mech.steps.join(' \u2192 '),standing:'supported'}],mech:true};}
@@ -1424,7 +1448,7 @@ async function ask(q,att,onChunk){const t=String(q||'').trim().toLowerCase();con
  const checks=gradeAnswer(answer,facts);checks.push({s:'DEF/EVA/REC: '+recCount+' re-ground'+(recCount===1?'':'s'),standing:recCount===0?'supported':'partial'});
  return {answer,mouth,facts,system,user,checks,err:err&&String(err.message||err)};}
 function vChat(){const c=curChat();
- let h='<h1 style="display:flex;align-items:center;gap:6px">Ask'+(c?'<button class="cicon" title="New thread here" aria-label="New thread" style="margin-left:auto" onclick="newThread()">'+ic('chat-text')+'</button>':'')+'</h1>';
+ let h=crumb(ic('chat-circle-text')+' Ask')+'<h1 style="display:flex;align-items:center;gap:6px">Ask'+(c?'<button class="cicon" title="New thread here" aria-label="New thread" style="margin-left:auto" onclick="newThread()">'+ic('chat-text')+'</button>':'')+'</h1>';
  const msgs=c?c.msgs.map(m=>'<div class="cmsg '+(m.role==='user'?'cu':'cs')+'"><div class="cbody">'+(m.att&&m.att.length?'<div class="catts">'+m.att.map(a=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+'</span>').join('')+'</div>':'')+(m.pending?'<span class="think">thinking\u2026</span>':md(m.text))+(m.system?'<details class="cground"><summary>prompt</summary><pre class="cp">'+esc('system: '+m.system+'\n\nuser: '+m.user)+'</pre></details>':'')+(m.checks&&m.checks.length?'<details class="cground"><summary>checked (Murch pace + fold falsify)</summary>'+m.checks.map(x=>'<div class="ck '+x.standing+'">'+(x.standing==='supported'?'\u2713':x.standing==='partial'?'~':'\u26a0')+' '+esc(x.s)+'</div>').join('')+'</details>':'')+(m.facts&&m.facts.length?'<details class="cground"><summary>thinking ('+m.facts.length+')</summary>'+esc(m.facts.join('\n')).replace(/\n/g,'<br>')+'</details>':'')+'</div></div>').join(''):'';
  const welcome='<div class="welcome"><div class="bmark">'+ic('chat-circle-text')+'</div><h2>Ask anything</h2><p class="note">A general assistant that can also answer about your files, tables and notes. Every reply is grounded and checked before it is spoken.</p></div>';
  const attrow=U.att.length?'<div class="catts">'+U.att.map((a,i)=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+' <button class="xd" onclick="detach('+i+')">'+ic('x')+'</button></span>').join('')+'</div>':'';
