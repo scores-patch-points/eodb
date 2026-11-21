@@ -28,8 +28,10 @@ window.__EODB_BOOT={join,file,open,keymodeFor};
 <script type="module">
 import * as Automation from './automation.mjs';
 import * as Relational from './relational.mjs';
+import * as Project from './project.mjs';
 window.Automation=Automation;
 window.Relational=Relational;
+window.Project=Project;
 </script>
 <script>
 (function(){try{var t=localStorage.getItem('eodb-theme');if(t!=='light'&&t!=='dark')t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
@@ -468,17 +470,19 @@ function vAuto(){let h=crumb(ic('git-branch')+' Automations')+'<h1>Automations</
  return h;}
 /* ================= sql (the log as a conventional database) ================= */
 function vSql(){const R=window.Relational;const db=R.materialize(ENGINE.view());
- let h=crumb(ic('database')+' SQL')+'<h1>SQL</h1><p class="sub">The whole log folded into tables. Query it, or export it as SQLite / JSON.</p>';
+ let h=crumb(ic('database')+' SQL')+'<h1>SQL</h1><p class="sub">The whole log folded into tables. Query it, or convert it to any database / file format.</p>';
  h+='<div class="row"><div class="grow card"><b>Query</b><textarea id="sqlq" style="width:100%;height:96px;font-family:var(--mono);margin-top:6px" placeholder="SELECT * FROM Contracts WHERE amount > 5000 ORDER BY amount DESC"></textarea>';
- h+='<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><button class="b p" onclick="runSql()">'+ic('magnifying-glass')+' Run</button><button class="b" onclick="dl(\'eodb.sql\',window.Relational.toSQLite(window.Relational.materialize(ENGINE.view())),\'application/sql\')">'+ic('download-simple')+' Export .sql</button><button class="b" onclick="dl(\'eodb.json\',JSON.stringify(window.Relational.toJSON(window.Relational.materialize(ENGINE.view())),null,2),\'application/json\')">'+ic('download-simple')+' Export JSON</button></div>';
+ h+='<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><button class="b p" onclick="runSql()">'+ic('magnifying-glass')+' Run</button><span style="flex:1"></span>'+convertMenu('cvdb')+'</div>';
  h+='<div id="sql-res" style="margin-top:10px"></div></div>';
- h+='<div class="grow card"><b>Tables ('+db.tables.length+')</b><div class="wrap" style="margin-top:8px"><table><tr><th>Table</th><th>Fields</th><th>Rows</th></tr>'+db.tables.map(t=>'<tr><td class="mono">'+esc(t.name)+'</td><td>'+t.columns.map(c=>esc(c.name)).join(', ')+'</td><td class="num">'+t.rows.length+'</td></tr>').join('')+'</table></div></div></div>';
+ h+='<div class="grow card"><b>Tables ('+db.tables.length+')</b><div class="wrap" style="margin-top:8px"><table><tr><th>Table</th><th>Fields</th><th>Rows</th><th></th></tr>'+db.tables.map(t=>'<tr><td class="mono">'+esc(t.name)+'</td><td>'+t.columns.map(c=>esc(c.name)).join(', ')+'</td><td class="num">'+t.rows.length+'</td><td><button class="b" onclick="convertDl(\'csv\',\''+t.id+'\')">'+ic('download-simple')+' CSV</button></td></tr>').join('')+'</table></div></div></div>';
  return h;}
 function runSql(){const el=document.getElementById('sql-res');const q=(document.getElementById('sqlq')||{}).value||'';if(!q){el.innerHTML='';return;}
  try{const r=ENGINE.sql(q);const cols=r.columns&&r.columns.length?r.columns:Object.keys(r.rows[0]||{});
   let h='<div class="note">'+r.rows.length+' row'+(r.rows.length===1?'':'s')+'</div><div class="wrap" style="margin-top:6px"><table><tr>'+cols.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr>'+r.rows.map(row=>'<tr>'+cols.map(c=>'<td>'+esc(row[c]==null?'':row[c])+'</td>').join('')+'</tr>').join('')+'</table></div>';
   el.innerHTML=h;}catch(e){el.innerHTML='<div class="alert">'+esc(e.message)+'</div>';}}
 function dl(name,text,type){const b=new Blob([text],{type});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},0);}
+function convertDl(format,table){try{const r=ENGINE.convert({format,table:table||null,ws:U.ws});dl(r.name,r.text,r.mime);return r;}catch(e){alert(String(e&&e.message||e));return null;}}
+function convertMenu(id,table){return '<select id="'+id+'">'+Object.keys(window.Project.PROJECTORS).map(f=>'<option value="'+f+'">'+window.Project.PROJECTORS[f].label+'</option>').join('')+'</select><button class="b p" onclick="convertDl(document.getElementById(\''+id+'\').value,'+(table?'\''+table+'\'':'null')+')">'+ic('download-simple')+' Convert</button>';}
 /* ================= network ================= */
 function renderNetwork(){
   const g=ENGINE.networkGraph(), el=document.getElementById('net-canvas'); if(!el)return;
@@ -583,7 +587,7 @@ function fileHashOf(v){const x=String(v||'').trim();if(!x)return null;const fs=w
 /* ---- table ---- */
 function vTable(){const t=TB(U.sel);if(!t){U.sel='ws';return vWs();}
  const tabs=[['data','table','Data'],['fields','list-bullets','Fields'],['prov','git-branch','Where rows came from']];
- let h=crumb(ic('table')+' '+esc(t.name))+'<h1>'+esc(t.name)+(t.std?' <span class="chip c-n" style="vertical-align:middle">follows '+t.std+'</span>':'')+'</h1><nav class="tabs">'+tabs.map(([k,i,n])=>'<button class="'+(U.tab===k?'on':'')+'" onclick="U.tab=\''+k+'\';render()">'+ic(i)+n+'</button>').join('')+'</nav>';
+ let h=crumb(ic('table')+' '+esc(t.name))+'<h1>'+esc(t.name)+(t.std?' <span class="chip c-n" style="vertical-align:middle">follows '+t.std+'</span>':'')+'</h1><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px"><nav class="tabs" style="margin:0;flex:1;border:0">'+tabs.map(([k,i,n])=>'<button class="'+(U.tab===k?'on':'')+'" onclick="U.tab=\''+k+'\';render()">'+ic(i)+n+'</button>').join('')+'</nav>'+convertMenu('cvtb',t.id)+'</div>';
  return h+(U.tab==='data'?vData(t):U.tab==='fields'?vFields(t):vProv(t));}
 const EDITABLE=f=>!['formula','attach','created','modified','auto','lookup','rollup','link'].includes(f.t)||f.t==='link';
 function vData(t){const vals=computeTable(t);

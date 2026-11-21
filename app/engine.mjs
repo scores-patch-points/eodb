@@ -19,6 +19,7 @@ import * as G from './graph.mjs';
 import * as Tab from './tabular.mjs';
 import * as Rel from './relational.mjs';
 import * as Automation from './automation.mjs';
+import * as Project from './project.mjs';
 import { makeName } from './naming.mjs';
 
 // the page's operation names  ->  [pharos kind, cell]. Creating things is INS; setting a value on an existing thing is DEF (so two devices setting the
@@ -35,6 +36,7 @@ export const OPS = {
   'auto-run+': ['auto-run', 'INS·Figure'], 'auto-node+': ['auto-node', 'INS·Figure'],
   'auto-trigger+': ['auto-trigger', 'INS·Figure'], 'auto-event+': ['auto-event', 'INS·Figure'], 'auto-claim+': ['auto-claim', 'INS·Figure'],
   'project+': ['project', 'INS·Figure'],
+  'vfile+': ['vfile', 'INS·Figure'],
 };
 const KIND_OP = Object.fromEntries(Object.entries(OPS).map(([op, [kind]]) => [kind, op]));
 const INFRA = new Set(['frame', 'kind', 'signature', 'capability', 'device-key', 'recovery', 'locator', 'safe-copy', 'ack', 'device-name']);
@@ -76,6 +78,7 @@ function addrOf(op, b) {
     case 'auto-event+': return `auto-event:${n()}`;
     case 'auto-claim+': return b.event ? `auto-claim:${b.trigger}:${b.event}` : `auto-claim:${b.trigger}`;
     case 'project+': return `project:${b.id}`;
+    case 'vfile+': return `vfile:${b.project}:${b.sequence}`;
     case 'retract': return `retract:${b.of}`;
     default: throw new core.PharosError('UNKNOWN_OP', `unknown operation "${op}"`);
   }
@@ -356,6 +359,8 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
     materialize() { return Rel.materialize(space.view()); },
     /** run a SQL query over the materialized tables. */
     sql(q) { return Rel.select(space.materialize(), q); },
+    /** convert the log (or one table/workspace) into any projected format; records a `vfile` entry. */
+    convert(opts) { return Project.convert(space, opts); },
     /** run an automation graph; ctx may add { fetch, askModel, fs }. The run and every node result become entries (the audit trail). */
     async runAutomation(graph, ctx = {}) {
       const trigger = Automation.triggerOf(graph);

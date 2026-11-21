@@ -62,6 +62,12 @@ export function createServer(space, ctx = {}) {
       }
       if (p === '/api/export.sql') { res.writeHead(200, { ...JSON_OK, 'content-type': 'application/sql; charset=utf-8', 'content-disposition': 'attachment; filename="eodb.sql"' }); return res.end(toSQLite(db())); }
       if (p === '/api/export.json') return sendJson(res, 200, toJSON(db()));
+      if (p === '/api/convert') {
+        const format = u.searchParams.get('format') || 'sqlite', table = u.searchParams.get('table') || undefined, ws = u.searchParams.get('ws') || undefined;
+        const r = space.convert({ format, table, ws });
+        res.writeHead(200, { ...JSON_OK, 'content-type': r.mime + '; charset=utf-8', 'content-disposition': `attachment; filename="${r.name}"` });
+        return res.end(r.bytes);
+      }
       if (p === '/api/automations') return sendJson(res, 200, { log: space.automationLog() });
 
       const wm = /^\/webhook\/(.+)$/.exec(p);
