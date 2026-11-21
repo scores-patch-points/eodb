@@ -1024,17 +1024,10 @@ function md(s){if(!s)return'';const codes=[];let t=String(s).replace(/```([\s\S]
  t=t.replace(/\u0000(\d+)\u0000/g,(m,i)=>'<pre class="code">'+esc(codes[+i])+'</pre>');
  return t.replace(/\n/g,'<br>');}
 async function askModel(user,system,onChunk){const r=await fetch(EODB_MODEL.url+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:EODB_MODEL.model,stream:true,messages:[{role:'system',content:system||personaFor(user)},{role:'user',content:user}],options:{temperature:0.2}})});if(!r.ok)throw new Error('local model HTTP '+r.status);const reader=r.body.getReader(),dec=new TextDecoder();let buf='',full='';while(true){const {done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf('\n'))>=0){const line=buf.slice(0,i).trim();buf=buf.slice(i+1);if(!line)continue;let j;try{j=JSON.parse(line);}catch(e){continue;}const t=j.message&&j.message.content;if(t){full+=t;if(onChunk)onChunk(t);}if(j.done){const a=full.trim();if(!a)throw new Error('empty model response');return a;}}}const a=full.trim();if(!a)throw new Error('empty model response');return a;}
-async function longform(topic,att,onChunk){const facts=retrieve(topic,att);const user0='DATA:\n'+facts.join('\n')+'\n\nWrite a short report on: '+topic+'\n\nOutline (3-5 sections, one line each):';
- let outline=null;try{outline=await askModel(user0,personaFor(topic));}catch(e){outline=null;}
- const sections=(outline?outline.split(/[\n,;]+/).map(x=>x.replace(/^\d+[.)\s]+/,'').trim()).filter(Boolean):['Overview','Details','Notes']).slice(0,6);
- const lines=['# '+topic,''];
- for(const sec of sections){
-  const facts2=facts.slice(0,4);const u='DATA:\n'+facts2.join('\n')+'\n\nWrite one paragraph (3-5 sentences) for the section "'+sec+'". No bullets, no headings.\n\nPARAGRAPH:';
-  let para='';try{para=await askModel(u,personaFor(sec));}catch(e){para='';}
-  if(para)lines.push('## '+sec+'\n'+para+'\n');
-  if(onChunk)onChunk('## '+sec+'\n'+para+'\n\n');
- }
- return {answer:lines.join('\n'),facts,system:personaFor(topic),user:user0,checks:[]};}
+async function longform(topic,att,onChunk){const facts=retrieve(topic,att);const user0='DATA:\n'+facts.join('\n')+'\n\nWrite a short report on: '+topic+'. Use ## headers for each section (3-5 sections). No bullet points, no lists. One paragraph per section. Cite the table or file each fact comes from.';
+ let full='';try{full=await askModel(user0,personaFor(topic),(tok)=>{if(onChunk)onChunk(tok);});}catch(e){full='';}
+ if(!full)full='No report could be generated.';
+ return {answer:full,facts,system:personaFor(topic),user:user0,checks:[]};}
 function fallbackAnswer(q,facts){return 'Local model not reachable, so here is what the fold says:\n\n'+facts.slice(0,12).join('\n');}
 // The judge is The Fold's own falsifier (fold-chat-falsify-answer.js), bundled with the language priors stubbed
 // (they load from Zenodotus, not here). Verdicts -> standings, exactly as the profile does.
@@ -1074,7 +1067,7 @@ function evaAgainst(v,att){const steps=[];const tbs=wsTables(U.ws),fl=wsFiles(U.
    if(/file/.test(v.question)){steps.push('listed '+fl.length+' files');return {filled:true,answer:fl.length?fl.map(f=>f.name+' ('+fmtSize(f.size)+')').join('\n'):'No files yet.',steps};}
    if(/table/.test(v.question)){steps.push('listed '+tbs.length+' tables');return {filled:true,answer:tbs.length?tbs.map(t=>t.name+' ('+t.r.length+' rows)').join('\n'):'No tables yet.',steps};}
    if(/doc|note/.test(v.question)){steps.push('listed '+ds.length+' docs/notes');return {filled:true,answer:ds.length?ds.map(d=>d.title).join('\n'):'No docs or notes yet.',steps};}
-   steps.push('listed workspace overview');return {filled:true,answer:W().name+': '+tbs.length+' tables, '+fl.length+' files, '+ds.length+' docs/notes.',steps};
+   return null;
   }
   const fm=v.question.match(/\b(search|find|look for|where is|locate)\b\s*(.+)?/);
   if(fm){const term=fm[2]||'';const toks=askToks(term);const hits=[];
@@ -1094,16 +1087,44 @@ function evaAgainst(v,att){const steps=[];const tbs=wsTables(U.ws),fl=wsFiles(U.
  }
  return {filled:false,answer:null,steps};}
 function mechAnswer(q,att){const v=defVoid(q);const r=evaAgainst(v,att);if(r.filled)return {answer:r.answer,steps:r.steps,mech:true};return null;}
+// DEF/EVA/REC: the instruction set is the void; the mouth's output is evaluated against it; violations re-ground.
+// DEF: declare the instruction void — what must hold about the answer.
+function defRules(q,withData){const toks=askToks(q);const rules=(window.PERSONA_RULES||[]).filter(ru=>(ru.tags||[]).includes('*')||(ru.tags||[]).some(t=>toks.includes(t)));
+ const out=[];let total=0;for(const f of rules){const p=prosifyFact(f);if(total+p.length>600)break;out.push(p);total+=p.length;}
+ const base='You are a warm, helpful assistant. '+out.join('; ')+'.';
+ const dataRule=withData?' You also have the user\'s local data. If the question is about it, answer only from the DATA and cite the table or file; if it is not there, say so.':'';
+ return base+dataRule;}
+// EVA: evaluate the mouth's output against the void. Returns {ok, violations}.
+function evaRules(answer){const v=[];const t=String(answer||'');
+ if(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}]/u.test(t))v.push('emoji');
+ if(/^[-*]\s/m.test(t))v.push('bullet');
+ if(/as an (AI|language model|assistant)/i.test(t))v.push('framing');
+ if(/genuinely|honestly|straightforward/i.test(t))v.push('banned-word');
+ if(t.length>600)v.push('too-long');
+ return {ok:v.length===0,violations:v};}
+// REC: re-ground the mouth's output — strip violations mechanically (the floor).
+function recRules(answer){let t=String(answer||'');
+ t=t.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}]/gu,'');
+ t=t.replace(/^[-*]\s+/gm,'');
+ t=t.replace(/as an (AI|language model|assistant)[^\n]*[.!?]?\s*/gi,'');
+ t=t.replace(/genuinely|honestly|straightforward/gi,'');
+ t=t.replace(/\n{3,}/g,'\n\n');
+ return t.trim();}
 async function ask(q,att,onChunk){const t=String(q||'').trim().toLowerCase();const greet=/^(hi|hello|hey|how are you|whats up|what's up|yo|sup|good (morning|afternoon|evening))\b/.test(t);
- if(!(att&&att.length)&&greet){return {answer:'Doing well \u2014 what can I help you with?',facts:[],system:personaFor(q),user:q,checks:[],mech:true};}
+ if(!(att&&att.length)&&greet){return {answer:'Doing well \u2014 what can I help you with?',facts:[],system:defRules(q,false),user:q,checks:[],mech:true};}
  const mech=mechAnswer(q,att);if(mech){return {answer:mech.answer,facts:[],system:'(mechanical \u2014 no model)',user:q,checks:[{s:mech.steps.join(' \u2192 '),standing:'supported'}],mech:true};}
- if(!(att&&att.length)&&greet){return {answer:'Doing well \u2014 what can I help you with?',facts:[],system:personaFor(q),user:q};}
  const facts=retrieve(q,att);const withData=facts.length>0||(att&&att.length>0);
  const c=curChat();const lastUser=c?c.msgs.filter(m=>m.role==='user').at(-1):null;const lastSys=c?c.msgs.filter(m=>m.role==='sys'&&m.text).at(-1):null;
  const isFollow=!withData&&!att.length&&/^(which|what|who|and|but|then|so|it|they|he|she|how|why|what about|how about|ok|okay|nice|great|tell me more|more)\b/i.test(q.trim())&&lastSys;
- const system=personaFor(q)+(withData?DATA_RULE:'');
+ const system=defRules(q,withData);
  const user=withData?('DATA:\n'+facts.join('\n')+'\n\nQuestion: '+q):(isFollow?'Previous answer: '+lastSys.text+'\n\nFollow-up question: '+q:q);
- let answer=null,err=null;try{answer=await askModel(user,system,onChunk);}catch(e){err=e;}if(!answer)answer=fallbackAnswer(q,facts);const checks=gradeAnswer(answer,facts);return {answer,facts,system,user,checks,err:err&&String(err.message||err)};}
+ // DEF the void: declare the instruction void (done above in defRules)
+ let answer=null,err=null,mouth=null,recCount=0;
+ try{mouth=await askModel(user,system,onChunk);}catch(e){err=e;}
+ if(mouth){const eva=evaRules(mouth);if(eva.ok){answer=mouth;}else{recCount++;const rec=recRules(mouth);const eva2=evaRules(rec);answer=eva2.ok?rec:rec;}}
+ if(!answer)answer=fallbackAnswer(q,facts);
+ const checks=gradeAnswer(answer,facts);checks.push({s:'DEF/EVA/REC: '+recCount+' re-ground'+(recCount===1?'':'s'),standing:recCount===0?'supported':'partial'});
+ return {answer,mouth,facts,system,user,checks,err:err&&String(err.message||err)};}
 function vChat(){const c=curChat();
  let h='<h1 style="display:flex;align-items:center;gap:10px">Ask<button class="b p" style="margin-left:auto" onclick="newChat()">'+ic('plus')+' New chat</button></h1>';
  h+='<div class="chats">'+U.chats.map(ch=>'<span class="chip '+(ch.id===U.chatId?'c-ok':'')+'" style="cursor:pointer" onclick="openChat(\''+ch.id+'\')">'+esc(ch.title||'New chat')+' <button class="xd" title="Delete" onclick="event.stopPropagation();delChat(\''+ch.id+'\')">'+ic('x')+'</button></span>').join('')+'</div>';
