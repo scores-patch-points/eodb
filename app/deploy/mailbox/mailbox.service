@@ -1,0 +1,21 @@
+[Unit]
+Description=EODB mailbox carrier (sealed segment store)
+After=network.target
+
+[Service]
+User=mailbox
+Group=mailbox
+# the token and the at-rest key live in a root-only file, not on the command line (command lines are visible to every local user)
+EnvironmentFile=/etc/mailbox/env
+ExecStart=@NODE@ /opt/mailbox/mailbox.mjs --datadir /mnt/mailbox --port 8792 --private --cors --quota 1000000000000
+Restart=always
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/mnt/mailbox
+PrivateTmp=yes
+ProtectHome=yes
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target
