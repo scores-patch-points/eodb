@@ -15,6 +15,7 @@ const join=new URLSearchParams(location.hash.slice(1)).get('join')||undefined;
 const file=new URLSearchParams(location.hash.slice(1)).get('file')||undefined;
 let keymode=null;try{keymode=await log.backend.getMeta('keymode');}catch(e){}
 const open=(opts={})=>{window.__ENGINE_READY=openSpace({name:'eodb',backend:log.backend,blobBackend:blobs.backend,cells,join,...opts}).then(e=>{window.ENGINE=e;if(join)history.replaceState(null,'',location.pathname+location.search);return e;},err=>{window.__ENGINE_ERROR=err;return null;});return window.__ENGINE_READY;};
+import * as KhoraText from './vendor/khora-text.js';window.KhoraText=KhoraText;
 window.__EODB_BOOT={join,file,keymode,open};
 </script>
 <style>#storebar{position:fixed;right:10px;bottom:8px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--mut);z-index:50}#storebar.bad{background:var(--badbg);color:var(--bad);border-color:var(--bad)}
@@ -176,6 +177,11 @@ td input{font:inherit;padding:2px 6px;border:1px solid var(--acc);border-radius:
  .chatlist{width:100%;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:10px}
  .chatmain{width:100%}
 }
+.it.sub{padding-left:24px;font-size:13.5px}
+.side-foot{margin-top:auto;border-top:1px solid var(--line);padding-top:6px}
+body.chatting aside{display:none}
+body.chatting #tabbar{display:none}
+body.chatting section.main{padding:0}
 </style><style id="responsive">
 @media (max-width:800px){
  .app{flex-direction:column}
@@ -350,6 +356,7 @@ addEventListener('resize',()=>{if(document.querySelector('aside'))narrowNav();})
 function render0(){side();tabbar();const m=document.getElementById('main');
  m.innerHTML=U.sel==='docs'?vDocs('doc'):U.sel==='notes'?vDocs('note'):/^doc:/.test(U.sel)?vDoc(U.sel.slice(4)):U.sel==='ws'?vWs():U.sel==='files'?vFiles():U.sel==='log'?vLog():U.sel==='match'?vMatch():U.sel==='profile'?vProfile():U.sel==='chat'?vChat():vTable();
  document.body.classList.toggle('viewing',!!U.view);
+ document.body.classList.toggle('chatting',U.sel==='chat');
  if(U.sel==='files')wireDrop();
  if(U.sel==='profile')setTimeout(drawQr,0);
  if(U.sel==='chat')focusId('cq');
@@ -358,17 +365,21 @@ function render0(){side();tabbar();const m=document.getElementById('main');
 function tabbar(){const t=document.getElementById('tabbar');if(!t)return;const onDoc=/^doc:/.test(U.sel);
  const items=[['files','archive','Files',U.sel==='files'],['chat','chat-circle-text','Ask',U.sel==='chat'],['docs','file-text','Docs',U.sel==='docs'||(onDoc&&(DOC(U.sel.slice(4))||{}).kind==='doc')],['notes','note-pencil','Notes',U.sel==='notes'||(onDoc&&(DOC(U.sel.slice(4))||{}).kind==='note')],['profile','user','Profile',U.sel==='profile']];
  t.innerHTML=items.map(([k,i,n,on])=>'<button class="t '+(on?'on':'')+'" onclick="U.view=null;U.open=null;U.sel=\''+k+'\';render()">'+ic(i)+n+'</button>').join('');}
-function side(){
+function side(){const onDoc=/^doc:/.test(U.sel);
  let h='<div class="brand">'+ic('hard-drives')+'<div>Your database<small>End-to-end encrypted</small></div></div>';
- h+='<div class="it '+(U.sel==='chat'?'on':'')+'" onclick="U.sel=\'chat\';render()">'+ic('chat-circle-text')+' Ask your data</div><div class="it '+(U.sel==='profile'?'on':'')+'" onclick="U.sel=\'profile\';render()">'+ic('user')+' Profile</div><div class="side-h">WORKSPACES</div>';
+ h+='<div class="it '+(U.sel==='files'||U.sel==='match'?'on':'')+'" onclick="U.sel=\'files\';render()">'+ic('archive')+' Files<span class="n">'+wsFiles(U.ws).length+'</span></div>';
+ h+='<div class="it '+(U.sel==='ws'?'on':'')+'" onclick="U.sel=\'ws\';render()">'+ic('table')+' Tables<span class="n">'+wsTables(U.ws).length+'</span></div>';
+ h+='<div class="it '+(U.sel==='docs'||(onDoc&&(DOC(U.sel.slice(4))||{}).kind==='doc')?'on':'')+'" onclick="U.sel=\'docs\';render()">'+ic('file-text')+' Documents<span class="n">'+wsDocs(U.ws,'doc').length+'</span></div>';
+ h+='<div class="it '+(U.sel==='notes'||(onDoc&&(DOC(U.sel.slice(4))||{}).kind==='note')?'on':'')+'" onclick="U.sel=\'notes\';render()">'+ic('note-pencil')+' Notes<span class="n">'+wsDocs(U.ws,'note').length+'</span></div>';
+ h+='<div class="it '+(U.sel==='chat'?'on':'')+'" onclick="U.sel=\'chat\';render()">'+ic('chat-circle-text')+' Ask<span class="n">'+U.chats.length+'</span></div>';
+ h+='<div class="side-h">SPACES</div>';
  for(const w of D.ws){const on=U.ws===w.id;
   h+='<div class="ws '+(on?'on':'')+'"><div class="wsh" onclick="goWs(\''+w.id+'\')">'+ic(on?'folder-open':'folder')+' '+esc(w.name)+'</div>';
-  if(on){h+=wsTables(w.id).map(t=>'<div class="it '+(U.sel===t.id?'on':'')+'" onclick="goTb(\''+t.id+'\')">'+ic('table')+' '+esc(t.name)+'<span class="n">'+t.r.length+'</span></div>').join('')+
-   '<div class="it '+(U.sel==='docs'||(/^doc:/.test(U.sel)&&(DOC(U.sel.slice(4))||{}).kind==='doc')?'on':'')+'" onclick="U.sel=\'docs\';render()">'+ic('file-text')+' Documents<span class="n">'+wsDocs(w.id,'doc').length+'</span></div><div class="it '+(U.sel==='notes'||(/^doc:/.test(U.sel)&&(DOC(U.sel.slice(4))||{}).kind==='note')?'on':'')+'" onclick="U.sel=\'notes\';render()">'+ic('note-pencil')+' Notes<span class="n">'+wsDocs(w.id,'note').length+'</span></div><div class="it '+(U.sel==='files'||U.sel==='match'?'on':'')+'" onclick="U.sel=\'files\';render()">'+ic('archive')+' Files<span class="n">'+wsFiles(w.id).length+'</span></div>';
-   h+=U.adding==='t'?'<div class="mini"><input id="nt" type="text" placeholder="Table name" onkeydown="if(event.key===\'Enter\')newTb();if(event.key===\'Escape\'){U.adding=null;render()}"><button class="b p" onclick="newTb()">Add</button></div>':'<button class="link" onclick="U.adding=\'t\';render();focusId(\'nt\')">'+ic('plus')+' New table</button>';}
+  if(on)h+=wsTables(w.id).map(t=>'<div class="it sub '+(U.sel===t.id?'on':'')+'" onclick="goTb(\''+t.id+'\')">'+ic('caret-right')+' '+esc(t.name)+'<span class="n">'+t.r.length+'</span></div>').join('');
   h+='</div>';}
-
+ h+='<div class="side-foot"><div class="it '+(U.sel==='profile'?'on':'')+'" onclick="U.sel=\'profile\';render()">'+ic('user')+' Profile</div></div>';
  document.getElementById('side').innerHTML=h;}
+
 function focusId(i){setTimeout(()=>{const e=document.getElementById(i);if(e)e.focus();},0);}
 function goWs(id){U.ws=id;U.sel='ws';U.adding=null;render();}
 function goTb(id){U.sel=id;U.tab='data';U.edit=null;render();}
@@ -377,10 +388,8 @@ async function newTb(){const n=(document.getElementById('nt').value||'').trim()|
 async function newWs(){const n=(document.getElementById('nw').value||'').trim()||'Untitled workspace';const id=uid('w');U.adding=null;await appendQ('ws+',{id,name:n});D=fold();goWs(id);}
 const crumb=a=>'<div class="crumb"><button class="lk" onclick="goHome()">'+ic('folder-open')+' '+esc(W().name)+'</button>'+(a?' '+ic('caret-right')+' '+a:'')+'</div>';
 function goHome(){U.sel='ws';render();}/* ---- workspace home ---- */
-function vWs(){const tbs=wsTables(U.ws),fl=wsFiles(U.ws);
- let h=crumb('')+'<h1>'+esc(W().name)+'</h1><div class="row">';
- h+='<div class="grow"><div class="gt">TABLES ('+tbs.length+')</div>'+(tbs.map(t=>'<div class="card" style="margin-bottom:8px;cursor:pointer" onclick="goTb(\''+t.id+'\')"><b>'+ic('table')+' '+esc(t.name)+'</b>'+(t.std?' <span class="chip c-n">follows '+t.std+'</span>':'')+'<div class="note">'+t.f.length+' fields, '+t.r.length+' rows</div></div>').join('')||'<p class="note">No tables yet.</p>')+'</div>';
- h+='<div class="grow"><div class="gt">Files</div>'+(fl.map(f=>{const csv=/csv/.test(f.type)||/\.csv$/i.test(f.name);const u=csv?unresolved(f.hash):0;return '<div class="card" style="margin-bottom:8px;cursor:pointer" onclick="openFile(\''+f.hash+'\')"><b>'+ic(csv?'file-csv':'file')+' '+esc(f.name)+'</b><div class="note">'+fmtSize(f.size)+'</div>';}).join('')||'<p class="note">No files yet.</p>')+'</div></div>';
+function vWs(){const tbs=wsTables(U.ws);
+ let h=crumb(ic('table')+' Tables')+'<h1>Tables</h1>'+(tbs.length?'<div class="types">'+tbs.map(t=>'<div class="ty" onclick="goTb(\''+t.id+'\')">'+ic('table')+'<div><b>'+esc(t.name)+'</b>'+(t.std?' <span class="chip c-n">'+t.std+'</span>':'')+'<small>'+t.f.length+' fields · '+t.r.length+' rows</small></div></div>').join('')+'</div>':'<p class="note">No tables yet.</p>');
  return h;}
 function openMatch(h){U.src=h;U.sel='match';U.mtab='match';render();}
 function openFile(h){U.sel='files';U.open=null;U.view=h;render();}
@@ -923,7 +932,8 @@ function attachFacts(att){const out=[];
  }
  return out;}
 function retrieve(q,att){const tbs=wsTables(U.ws),fl=wsFiles(U.ws),ds=wsDocs(U.ws),toks=askToks(q);
- const hit=s=>toks.reduce((n,t)=>n+((s.toLowerCase().includes(t))?1:0),0);
+ const KT=window.KhoraText,qs=(()=>{try{return KT?(KT.extractSurfaces(KT.splitSentences(q))||[]).map(x=>x.surface).filter(Boolean).slice(0,6):[];}catch(e){return[];}})();
+ const hit=s=>{let sc=toks.reduce((n,t)=>n+((s.toLowerCase().includes(t))?1:0),0);if(KT&&qs.length){const ws=String(s).toLowerCase().split(/[^a-z0-9]/);for(const w of ws){if(w.length<3)continue;for(const qn of qs){if(KT.namesCorefer(qn,w)){sc+=3;break;}}}}return sc;};
  const cand=[],add=(sc,str)=>str&&cand.push({sc,str});
  for(const f of attachFacts(att))add(100,f);
  for(const t of tbs){
@@ -944,7 +954,7 @@ async function askModel(prompt){const r=await fetch(EODB_MODEL.url+'/api/generat
 function fallbackAnswer(q,facts){return 'Local model not reachable, so here is what the fold says:\n\n'+facts.slice(0,12).join('\n');}
 async function ask(q,att){const facts=retrieve(q,att);let answer=null,err=null;try{answer=await askModel(buildPrompt(q,facts));}catch(e){err=e;}if(!answer)answer=fallbackAnswer(q,facts);return {answer,facts,err:err&&String(err.message||err)};}
 function vChat(){const c=curChat();const mob=matchMedia('(max-width:800px)').matches;
- const list='<div class="chatlist"><button class="b p" style="width:100%" onclick="newChat()">'+ic('plus')+' New chat</button><div class="cl">'+U.chats.map(ch=>'<div class="ch '+(ch.id===U.chatId?'on':'')+'" onclick="openChat(\''+ch.id+'\')"><div class="ct">'+esc(ch.title||'New chat')+'</div><div class="cs">'+esc(((ch.msgs[0]||{}).text||'')).slice(0,40)+'</div><button class="chdel" title="Delete" onclick="event.stopPropagation();delChat(\''+ch.id+'\')">'+ic('trash')+'</button></div>').join('')+'</div></div>';
+ const list='<div class="chatlist"><div class="chathead"><button class="b g" onclick="U.sel=\'ws\';render()" title="Back">&#8249;</button><span class="t">Chats</span></div><button class="b p newchat" onclick="newChat()">'+ic('plus')+' New chat</button><div class="cl">'+U.chats.map(ch=>'<div class="ch '+(ch.id===U.chatId?'on':'')+'" onclick="openChat(\''+ch.id+'\')"><div class="ct">'+esc(ch.title||'New chat')+'</div><div class="cs">'+esc(((ch.msgs[0]||{}).text||'')).slice(0,40)+'</div><button class="chdel" title="Delete" onclick="event.stopPropagation();delChat(\''+ch.id+'\')">'+ic('trash')+'</button></div>').join('')+'</div></div>';
  const msgs=c?c.msgs.map(m=>'<div class="cmsg '+(m.role==='user'?'cu':'cs')+'"><div class="cbody">'+(m.att&&m.att.length?'<div class="catts">'+m.att.map(a=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+'</span>').join('')+'</div>':'')+(m.pending?'\u2026':esc(m.text).replace(/\n/g,'<br>'))+(m.facts&&m.facts.length?'<details class="cground"><summary>grounding ('+m.facts.length+')</summary>'+esc(m.facts.join('\n')).replace(/\n/g,'<br>')+'</details>':'')+'</div></div>').join(''):'';
  const welcome='<div class="welcome"><div class="bmark">'+ic('chat-circle-text')+'</div><h2>Ask your data</h2><p class="note">Ask in plain language. Attach files, tables or docs to scope an answer. Every question is grounded fresh from the fold.</p></div>';
  const back=mob&&c?'<button class="b" onclick="U.chatId=null;render()">&#8249; Chats</button>':'';
