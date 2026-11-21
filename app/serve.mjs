@@ -8,10 +8,12 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildExtension } from '../extension/package.mjs';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const MAX = 8 * 1024 * 1024;
 const store = new Map();
+let extensionZip = null;
 const CORS = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'GET, PUT, OPTIONS',
@@ -25,6 +27,11 @@ const server = http.createServer((req, res) => {
   if (req.method === 'OPTIONS') return send(res, 204, '');
   const u = new URL(req.url, 'http://x');
   if (u.pathname === '/health') return send(res, 200, 'ok');
+  if (u.pathname === '/extension.zip') {   // build + serve the downloadable extension, once
+    if (!extensionZip) { const r = buildExtension(path.join(dir, '..', 'extension', 'dist')); extensionZip = fs.readFileSync(r.file); }
+    res.writeHead(200, { ...CORS, 'content-type': 'application/zip', 'content-length': extensionZip.length, 'content-disposition': 'attachment; filename="eodb-extension.zip"' });
+    return res.end(extensionZip);
+  }
   if (u.pathname === '/o') return req.method === 'GET' ? send(res, 200, JSON.stringify([...store.keys()]), 'application/json') : send(res, 405, '');
   const m = /^\/o\/(.+)$/.exec(u.pathname);
   if (m) {

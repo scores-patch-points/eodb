@@ -1,0 +1,16 @@
+<!doctype html><meta charset="utf-8"><title>EODB</title>
+<style>:root{color-scheme:dark}body{font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,system-ui,sans-serif;background:#17171a;color:#f4f4f6;margin:0;padding:16px}
+h1{font-size:16px;margin:0 0 4px}.mut{color:#9d9da8;font-size:12.5px}.card{background:#1c1c20;border:1px solid #2e2e33;border-radius:10px;padding:12px;margin:12px 0}
+button{font:inherit;background:#8ab4ff;color:#0c0e12;border:0;border-radius:8px;padding:8px 12px;font-weight:600;cursor:pointer}
+pre{white-space:pre-wrap;word-break:break-word;max-height:320px;overflow:auto;font:12px/1.5 ui-monospace,Menlo,monospace;color:#c9c9d2}</style>
+<h1>EODB</h1><div class="mut" id="st">starting…</div>
+<div class="card"><b>This page</b><div class="mut">What the assistant can see, captured only when you ask.</div><button id="cap">Read this page</button><pre id="pg"></pre></div>
+<script>
+const st=document.getElementById('st');
+chrome.runtime.sendMessage({t:'status'}).then(r=>{ if(r&&r.ok)st.textContent=r.role+' · '+r.device+' · '+r.peers.length+' device(s) · '+r.entries+' entries'; else st.textContent='not booted'; });
+document.getElementById('cap').onclick=async()=>{
+ const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
+ const r=await chrome.tabs.sendMessage(tab.id,{t:'page'}).catch(()=>null);
+ document.getElementById('pg').textContent=r&&r.ok?(''+r.page.title+'\n'+r.page.url+'\n\n'+r.page.text):'(this page cannot be read)';
+};
+</script>

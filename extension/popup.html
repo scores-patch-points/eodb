@@ -1,0 +1,15 @@
+<!doctype html><meta charset="utf-8"><title>EODB</title>
+<style>:root{color-scheme:dark}body{font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,system-ui,sans-serif;background:#17171a;color:#f4f4f6;margin:0;padding:14px;min-width:260px}
+h1{font-size:15px;margin:0 0 10px}.row{color:#9d9da8;font-size:12.5px;margin:2px 0}.chip{display:inline-block;background:#29292e;border-radius:6px;padding:1px 8px;font-size:12px;margin-left:6px}
+a{color:#8ab4ff;text-decoration:none}button{font:inherit;background:#8ab4ff;color:#0c0e12;border:0;border-radius:8px;padding:7px 12px;font-weight:600;cursor:pointer;width:100%;margin-top:10px}</style>
+<h1>EODB</h1>
+<div id="s" class="row">starting…</div>
+<button id="open">Open the app</button>
+<script>
+const s=document.getElementById('s');
+chrome.runtime.sendMessage({t:'status'}).then(r=>{
+ if(r&&r.ok){s.innerHTML='role <b>'+r.role+'</b><span class="chip">'+r.device+'</span><br>'+r.peers.length+' device(s) · '+r.entries+' entries'+(r.routesUp!=null?' · '+r.routesUp+' route(s) up':'');
+ }else{s.textContent='not booted yet';}
+}).catch(()=>s.textContent='cannot reach the background worker');
+document.getElementById('open').onclick=()=>chrome.tabs.create({url:chrome.runtime.getURL('sidepanel.html')});
+</script>

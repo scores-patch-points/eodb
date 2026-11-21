@@ -315,11 +315,12 @@ const uid=p=>p+(++CNT);
 function fold(upto){
  const L=LOG.slice(0,upto==null?LOG.length:upto);
  const dead=new Set(L.filter(e=>e.op==='retract').map(e=>e.body.of));
- const S={ws:[],tb:[],files:[],docs:[],reads:{},maps:{},mapLog:[]};
+  const S={ws:[],tb:[],files:[],docs:[],projects:[],reads:{},maps:{},mapLog:[]};
  for(const e of L){if(e.op==='retract'||(dead.has(e.id)&&e.op!=='blk+'))continue;const b=e.body;
   const tb=()=>S.tb.find(x=>x.id===b.tb);
   switch(e.op){
-   case 'ws+':S.ws.push({id:b.id,name:b.name,eid:e.id});break;
+    case 'ws+':S.ws.push({id:b.id,name:b.name,eid:e.id});break;
+    case 'project+':S.projects.push({id:b.id,name:b.name,eid:e.id});break;
    case 'tb+':S.tb.push({id:b.id,ws:b.ws,name:b.name,std:b.std,f:[],r:[],eid:e.id});break;
    case 'fld+':{const t=tb();if(t)t.f.push({id:b.id,n:b.n,t:b.t,m:b.m,to:b.to,x:b.x});break;}
    case 'fld=':{const t=tb();const f=t&&t.f.find(x=>x.id===b.id);if(f)Object.assign(f,b.set);break;}
@@ -327,8 +328,8 @@ function fold(upto){
    case 'rows+':{const t=tb();if(t)for(const r of b.rows)t.r.push({id:r.id,v:{...r.v},src:b.src,eid:e.id});break;}
    case 'cell=':{const t=tb();const r=t&&t.r.find(x=>x.id===b.rid);if(r)r.v[b.fid]=b.v;break;}
    case 'file+':S.files.push({...b,eid:e.id,seq:e.seq});break;
-   case 'doc+':S.docs.push({id:b.id,ws:b.ws,title:b.title,kind:b.kind||'doc',blocks:[],voice:[],cmts:[],shares:[],eid:e.id,seq:e.seq,ts:e.ts});break;
-   case 'doc=':{const d=S.docs.find(x=>x.id===b.id);if(d){if(b.title!=null)d.title=b.title;if(b.font)d.font=b.font;}break;}
+    case 'doc+':S.docs.push({id:b.id,ws:b.ws,title:b.title,kind:b.kind||'doc',projectId:b.projectId||null,blocks:[],voice:[],cmts:[],shares:[],eid:e.id,seq:e.seq,ts:e.ts});break;
+    case 'doc=':{const d=S.docs.find(x=>x.id===b.id);if(d){if(b.title!=null)d.title=b.title;if(b.font)d.font=b.font;if('projectId' in b)d.projectId=b.projectId;}break;}
    case 'cmt+':{const d=S.docs.find(x=>x.id===b.doc);if(d)d.cmts.push({...b,seq:e.seq});break;}
    case 'cmt=':{const d=S.docs.find(x=>x.id===b.doc);const c=d&&d.cmts.find(x=>x.id===b.id);if(c)c.resolved=b.resolved;break;}
    case 'share+':{const d=S.docs.find(x=>x.id===b.doc);if(d)d.shares.push({who:b.who,role:b.role});break;}
@@ -887,7 +888,7 @@ const BT={p:'Normal text',h1:'Heading 1',h2:'Heading 2',li:'Bulleted list',ol:'N
 const slug=s=>(s||'untitled').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40)||'untitled';
 const blkText=d=>d.blocks.map(b=>b.x).join(' ').trim();
 const nowLabel=()=>new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
-async function newDoc(kind,title,text){const id=uid('d');await appendQ('doc+',{id,ws:U.ws,title,kind});await appendQ('blk+',{doc:id,id:uid('b'),after:null,t:'p',x:text||''});D=fold();return id;}
+async function newDoc(kind,title,text,projectId){const id=uid('d');await appendQ('doc+',{id,ws:U.ws,title,kind,projectId});await appendQ('blk+',{doc:id,id:uid('b'),after:null,t:'p',x:text||''});D=fold();return id;}
 async function createDoc(){const el=document.getElementById('nd');const t=(el&&el.value||'').trim()||'Untitled document';const id=await newDoc('doc',t,'');U.sel='doc:'+id;U.focus=DOC(id).blocks[0].id;render();}
 async function quickNote(){const el=document.getElementById('qn');const t=(el&&el.value||'').trim();if(!t)return;const id=await newDoc('note',t.split('\n')[0].slice(0,48),t);render();}
 function vDocs(kind){const isN=kind==='note',L=wsDocs(U.ws,kind).slice().reverse();
@@ -1125,10 +1126,21 @@ function newChat(projectId,parentId){const c={id:uid('c'),title:'',msgs:[],proje
 function newThread(){const c=curChat();return c?newChat(c.projectId,c.id):newChat();}
 function openChat(id){U.chatId=id;U.att=[];render();focusId('cq');}
 function delChat(id){const del=chatDesc(id);U.chats=U.chats.filter(c=>!del.has(c.id));if(del.has(U.chatId))U.chatId=null;U.att=[];render();}
-function newProject(){const n=(prompt('Project name')||'').trim();if(!n)return;U.projects.push({id:uid('p'),name:n});render();}
-function delProject(id){U.projects=U.projects.filter(p=>p.id!==id);for(const c of U.chats)if(c.projectId===id)c.projectId=null;render();}
+async function newProject(){const n=(prompt('Project name')||'').trim();if(!n)return;await act('project+',{id:uid('p'),name:n});}
+async function delProject(pid){const p=D.projects.find(x=>x.id===pid);if(p)await act('retract',{of:p.eid});for(const c of U.chats)if(c.projectId===pid)c.projectId=null;render();}
+function moveChat(id,pid){const c=U.chats.find(x=>x.id===id);if(c){c.projectId=pid||null;render();}}
+function projectDocs(pid){return D.docs.filter(d=>d.projectId===pid);}
+async function moveDocToProject(docId,pid){await act('doc=',{id:docId,projectId:pid||null});}
+function newDocInProject(pid){closeM();newDoc('doc','Untitled','',pid).then(id=>{U.sel='doc:'+id;render();});}
+function addDocToProject(pid){
+ const free=D.docs.filter(d=>!d.projectId);
+ openSheet('<div class="fh" style="margin-bottom:10px"><h2>Add to project</h2><button class="b g" style="margin-left:auto" onclick="closeM()">'+ic('x')+'</button></div>'
+ +'<button class="b p" style="margin-bottom:10px" onclick="newDocInProject(\''+pid+'\')">'+ic('plus')+' New document</button>'
+ +'<div class="gt">ALREADY ADDED</div>'
+ +(free.length?free.map(d=>'<div class="res" onclick="moveDocToProject(\''+d.id+'\',\''+pid+'\');closeM()">'+ic(d.kind==='note'?'note-pencil':'file-text')+' '+esc(d.title)+'</div>').join(''):'<p class="note">No unassigned documents.</p>'));
+}
 function chatItem(c,d){const kids=U.chats.filter(x=>x.parentId===c.id);const on=c.id===U.chatId;let h='<div class="citem'+(on?' on':'')+'" style="padding-left:'+(8+d*16)+'px" onclick="openChat(\''+c.id+'\')"><span class="car">'+(kids.length?'\u25be ':'')+'</span>'+esc(c.title||'New chat')+'</div>';if(kids.length)h+=kids.map(k=>chatItem(k,d+1)).join('');return h;}
-function chatTree(){let h='';for(const c of U.chats.filter(c=>!c.projectId&&!c.parentId))h+=chatItem(c,0);for(const p of U.projects){const cs=U.chats.filter(c=>c.projectId===p.id&&!c.parentId);h+='<div class="cproj">'+ic('folder-open')+' '+esc(p.name)+'<button class="xd" style="margin-left:auto" title="Delete project" onclick="delProject(\''+p.id+'\')">'+ic('x')+'</button></div>'+(cs.length?cs.map(c=>chatItem(c,1)).join(''):'<div class="cempty">empty</div>');}return h;}
+function chatTree(){let h='';for(const c of U.chats.filter(c=>!c.projectId&&!c.parentId))h+=chatItem(c,0);for(const p of D.projects){const cs=U.chats.filter(c=>c.projectId===p.id&&!c.parentId);const ds=projectDocs(p.id);h+='<div class="cproj">'+ic('folder-open')+' '+esc(p.name)+'<span style="margin-left:auto;display:flex;gap:2px"><button class="xd" title="Add document" onclick="addDocToProject(\''+p.id+'\')">'+ic('plus')+'</button><button class="xd" title="Delete project" onclick="delProject(\''+p.id+'\')">'+ic('x')+'</button></span></div>'+cs.map(c=>chatItem(c,1)).join('')+ds.map(d=>'<div class="citem cdoc" style="padding-left:24px" onclick="U.sel=\'doc:'+d.id+'\';render()">'+ic(d.kind==='note'?'note-pencil':'file-text')+' '+esc(d.title)+'</div>').join('')+((!cs.length&&!ds.length)?'<div class="cempty">empty</div>':'');}return h;}
 function attachFile(h){if(!U.att.some(a=>a.id===h)){const f=wsFiles(U.ws).find(x=>x.hash===h);if(f)U.att.push({kind:'file',id:h,name:f.name});}render();}
 function attachTable(t){if(!U.att.some(a=>a.id===t)){const x=TB(t);if(x)U.att.push({kind:'table',id:t,name:x.name});}render();}
 function attachDoc(d){if(!U.att.some(a=>a.id===d)){const x=D.docs.find(y=>y.id===d);if(x)U.att.push({kind:'doc',id:d,name:x.title});}render();}

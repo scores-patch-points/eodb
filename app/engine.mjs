@@ -16,6 +16,7 @@ import * as Loc from './vendor/pharos/locator.mjs';
 import { gate } from './vendor/pharos/gate.mjs';
 import * as N from './net.mjs';
 import * as G from './graph.mjs';
+import * as Tab from './tabular.mjs';
 import { makeName } from './naming.mjs';
 
 // the page's operation names  ->  [pharos kind, cell]. Creating things is INS; setting a value on an existing thing is DEF (so two devices setting the
@@ -29,6 +30,7 @@ export const OPS = {
   'blk+': ['blk', 'INS·Figure'], 'blk=': ['blk-set', 'DEF·Figure'], 'voice+': ['voice', 'INS·Figure'],
   read: ['read', 'EVA·Figure'], map: ['map', 'CON·Figure'], retract: ['retract', 'NUL·Figure'],
   'auto+': ['auto', 'INS·Figure'],
+  'project+': ['project', 'INS·Figure'],
 };
 const KIND_OP = Object.fromEntries(Object.entries(OPS).map(([op, [kind]]) => [kind, op]));
 const INFRA = new Set(['frame', 'kind', 'signature', 'capability', 'device-key', 'recovery', 'locator', 'safe-copy', 'ack', 'device-name']);
@@ -64,6 +66,7 @@ function addrOf(op, b) {
     case 'voice+': return `voice:${b.doc}:${n()}`;
     case 'read': return `read:${b.hash}:${n()}`; case 'map': return `map:${b.src}:${b.col}`;
     case 'auto+': return `auto:${n()}`;
+    case 'project+': return `project:${b.id}`;
     case 'retract': return `retract:${b.of}`;
     default: throw new core.PharosError('UNKNOWN_OP', `unknown operation "${op}"`);
   }
@@ -287,6 +290,18 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
       await syncOnce();   // publish segments and blobs (each blob sealed under its own file key, named by a per-space keyed hash)
       const nm = name || (space.view().find((e) => e.op === 'file+' && e.body && e.body.hash === hash) || {}).body?.name || hash.slice(0, 8);
       return N.fileShareLink({ routes: share.routes.map((r) => r.replace(/^relay:/, '')), blob: (await blobName(hash)).slice(5), hash, key: await N.deriveFileKeyHex(await spaceKeyHexOf(), hash), type: b.type || '', name: nm });
+    },
+    /** turn a file's bytes (CSV/TSV/JSON/JSONL) into a table: infer field types and land the rows. Returns { tableId, fields, rows }. */
+    importTable({ name, bytes, type = '', ws = 'w1' } = {}) {
+      const t = Tab.parse(bytes, name, type);
+      const spec = Tab.tableSpec({ name, columns: t.columns, rows: t.rows });
+      const base = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+      const tbId = `t${base}`;
+      space.append('tb+', { id: tbId, ws, name: spec.name, std: null });
+      const fields = spec.fields.map((f, i) => ({ id: `f${base}${i}`, ...f }));
+      for (const f of fields) space.append('fld+', { tb: tbId, id: f.id, n: f.n, t: f.t });
+      space.append('rows+', { tb: tbId, rows: spec.rows.map((r, i) => ({ id: `r${base}${i}`, v: Object.fromEntries(fields.map((f) => [f.id, r[f.n]])) })) });
+      return { tableId: tbId, fields: fields.length, rows: spec.rows.length };
     },
     syncOnce, get role() { return guest ? 'guest' : share ? 'founder' : 'solo'; },   // live: a solo space becomes a founder's the moment it is shared
     /** devices seen in the log (the writer id before the tab part) */
