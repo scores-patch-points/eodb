@@ -182,7 +182,8 @@ td input{font:inherit;padding:2px 6px;border:1px solid var(--acc);border-radius:
 .cproj{font-size:11px;font-weight:600;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;padding:10px 4px 2px;display:flex;align-items:center;gap:6px}
 .cproj .xd{opacity:.5}
 .citem{font-size:13.5px;padding:4px 8px;border-radius:7px;cursor:pointer;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.citem .car{opacity:.4;display:inline-block;width:10px}
+.citem .car{opacity:.45;display:inline-block;width:12px;flex:none}
+.cproj .car{opacity:.6;display:inline-block;width:12px;flex:none}
 .citem:hover{background:var(--sel);color:var(--ink)}
 .citem.on{background:var(--accbg);color:var(--acc);font-weight:600}
 .cempty{font-size:12.5px;color:var(--dim);padding:2px 8px}
@@ -372,7 +373,7 @@ async function seed(){
  D=fold();
 }
 /* ================= UI state ================= */
-let U={dpanel:null,hist:null,share:false,cur:null,cb:null,focus:null,recmsg:'',open:null,view:null,qr:false,chats:[],projects:[],chatId:null,att:[],ws:'w1',sel:'ws',tab:'data',mtab:'match',src:null,adding:null,edit:null,tt:null,virt:null,msg:'',pickCol:null,pickRel:'close',driftOn:false,driftDone:false,drop:''};
+let U={dpanel:null,hist:null,share:false,cur:null,cb:null,focus:null,recmsg:'',open:null,view:null,qr:false,chats:[],collapsed:{},chatId:null,att:[],ws:'w1',sel:'ws',tab:'data',mtab:'match',src:null,adding:null,edit:null,tt:null,virt:null,msg:'',pickCol:null,pickRel:'close',driftOn:false,driftDone:false,drop:''};
 const W=()=>D.ws.find(w=>w.id===U.ws);
 const TB=id=>D.tb.find(t=>t.id===id);
 const wsTables=w=>D.tb.filter(t=>t.ws===w);
@@ -1139,8 +1140,9 @@ function addDocToProject(pid){
  +'<div class="gt">ALREADY ADDED</div>'
  +(free.length?free.map(d=>'<div class="res" onclick="moveDocToProject(\''+d.id+'\',\''+pid+'\');closeM()">'+ic(d.kind==='note'?'note-pencil':'file-text')+' '+esc(d.title)+'</div>').join(''):'<p class="note">No unassigned documents.</p>'));
 }
-function chatItem(c,d){const kids=U.chats.filter(x=>x.parentId===c.id);const on=c.id===U.chatId;let h='<div class="citem'+(on?' on':'')+'" style="padding-left:'+(8+d*16)+'px" onclick="openChat(\''+c.id+'\')"><span class="car">'+(kids.length?'\u25be ':'')+'</span>'+esc(c.title||'New chat')+'</div>';if(kids.length)h+=kids.map(k=>chatItem(k,d+1)).join('');return h;}
-function chatTree(){let h='';for(const c of U.chats.filter(c=>!c.projectId&&!c.parentId))h+=chatItem(c,0);for(const p of D.projects){const cs=U.chats.filter(c=>c.projectId===p.id&&!c.parentId);const ds=projectDocs(p.id);h+='<div class="cproj">'+ic('folder-open')+' '+esc(p.name)+'<span style="margin-left:auto;display:flex;gap:2px"><button class="xd" title="Add document" onclick="addDocToProject(\''+p.id+'\')">'+ic('plus')+'</button><button class="xd" title="Delete project" onclick="delProject(\''+p.id+'\')">'+ic('x')+'</button></span></div>'+cs.map(c=>chatItem(c,1)).join('')+ds.map(d=>'<div class="citem cdoc" style="padding-left:24px" onclick="U.sel=\'doc:'+d.id+'\';render()">'+ic(d.kind==='note'?'note-pencil':'file-text')+' '+esc(d.title)+'</div>').join('')+((!cs.length&&!ds.length)?'<div class="cempty">empty</div>':'');}return h;}
+function toggleCollapse(id){U.collapsed[id]=!U.collapsed[id];render();}
+function chatItem(c,d){const kids=U.chats.filter(x=>x.parentId===c.id);const on=c.id===U.chatId;const col=U.collapsed[c.id];let h='<div class="citem'+(on?' on':'')+'" style="padding-left:'+(8+d*16)+'px" onclick="openChat(\''+c.id+'\')">'+(kids.length?'<span class="car" onclick="event.stopPropagation();toggleCollapse(\''+c.id+'\')">'+(col?'\u25b8':'\u25be')+'</span>':'<span class="car"></span>')+esc(c.title||'New chat')+'</div>';if(kids.length&&!col)h+=kids.map(k=>chatItem(k,d+1)).join('');return h;}
+function chatTree(){let h='';for(const c of U.chats.filter(c=>!c.projectId&&!c.parentId))h+=chatItem(c,0);for(const p of D.projects){const cs=U.chats.filter(c=>c.projectId===p.id&&!c.parentId);const ds=projectDocs(p.id);const col=U.collapsed[p.id];h+='<div class="cproj" onclick="toggleCollapse(\''+p.id+'\')"><span class="car">'+(col?'\u25b8':'\u25be')+'</span>'+ic('folder-open')+' '+esc(p.name)+'<span style="margin-left:auto;display:flex;gap:2px"><button class="xd" title="Add document" onclick="event.stopPropagation();addDocToProject(\''+p.id+'\')">'+ic('plus')+'</button><button class="xd" title="Delete project" onclick="event.stopPropagation();delProject(\''+p.id+'\')">'+ic('x')+'</button></span></div>';if(!col)h+=cs.map(c=>chatItem(c,1)).join('')+ds.map(d=>'<div class="citem cdoc" style="padding-left:24px" onclick="U.sel=\'doc:'+d.id+'\';render()">'+ic(d.kind==='note'?'note-pencil':'file-text')+' '+esc(d.title)+'</div>').join('')+((!cs.length&&!ds.length)?'<div class="cempty">empty</div>':'');}return h;}
 function attachFile(h){if(!U.att.some(a=>a.id===h)){const f=wsFiles(U.ws).find(x=>x.hash===h);if(f)U.att.push({kind:'file',id:h,name:f.name});}render();}
 function attachTable(t){if(!U.att.some(a=>a.id===t)){const x=TB(t);if(x)U.att.push({kind:'table',id:t,name:x.name});}render();}
 function attachDoc(d){if(!U.att.some(a=>a.id===d)){const x=D.docs.find(y=>y.id===d);if(x)U.att.push({kind:'doc',id:d,name:x.title});}render();}
@@ -1254,50 +1256,45 @@ function defVoid(q){const t=String(q||'').trim().toLowerCase();const toks=askTok
  const rels=['sum','total','average','avg','mean','max','min'];for(const r of rels)if(has(r)){relation=r;break;}
  return {slot,anchor:toks,relation,question:t};}
 // EVA against the void: does the ground fill the slot? Returns {filled, answer, steps}.
-function evaAgainst(v,att){const steps=[];const tbs=wsTables(U.ws),fl=wsFiles(U.ws),ds=wsDocs(U.ws);
+// EVA against the void: does the ground fill the slot? The response type EMERGES from the slot + ground.
+// No hardcoded patterns — the void's slot determines what kind of answer is needed.
+function evaAgainst(v,att){const steps=[];const tbs=wsTables(U.ws),fl=wsFiles(U.ws),ds=wsDocs(U.ws);const anchor=v.anchor||[];
+ // SEG: segment the void's anchor into search terms
+ const terms=anchor.filter(w=>w.length>2);
+ // CON: connect the ground to the void — find what matches
+ const ground=[];
+ for(const tb of tbs)ground.push({type:'table',name:tb.name,rows:tb.r,fields:tb.f});
+ for(const f of fl)ground.push({type:'file',name:f.name,size:f.size,kind:f.type,reads:READS(f.hash)});
+ for(const d of ds)ground.push({type:'doc',name:d.title,kind:d.kind,text:blkText(d)});
+ // SYN: synthesize the answer from the slot + connected ground
  if(v.slot==='quantity'){
-  const hasW=w=>v.anchor.includes(w);const hasRel=rel=>v.relation===rel;
-  if(v.relation&&(v.relation==='sum'||v.relation==='total')){for(const tb of tbs){const fld=tb.f.find(f=>v.anchor.some(x=>f.n.toLowerCase().includes(x)));if(fld){const vals=tb.r.map(r=>Number(r.v[fld.id])).filter(n=>!isNaN(n));if(vals.length){const r=vals.reduce((a,b)=>a+b,0);steps.push('summed '+fld.n+' = '+r+' over '+vals.length+' rows');return {filled:true,answer:'Total '+fld.n+': '+r.toLocaleString()+' (over '+vals.length+' rows).',steps};}}}}
-  if(v.anchor.some(a=>a.includes('table'))||v.anchor.some(a=>tbs.map(tb=>tb.name.toLowerCase()).includes(a))){for(const tb of tbs){if(v.anchor.some(a=>tb.name.toLowerCase().includes(a))){steps.push('counted '+tb.r.length+' rows');return {filled:true,answer:tb.r.length+' row'+(tb.r.length===1?'':'s')+' in '+tb.name+'.',steps};}}if(!v.anchor.some(a=>tbs.map(tb=>tb.name.toLowerCase()).includes(a))){steps.push('counted '+tbs.length+' tables');return {filled:true,answer:'You have '+tbs.length+' table'+(tbs.length===1?'':'s')+'.',steps};}}
-  if(v.anchor.some(a=>a.includes('file'))){steps.push('counted '+fl.length+' files');return {filled:true,answer:fl.length+' file'+(fl.length===1?'':'s')+'.',steps};}
-  if(v.anchor.some(a=>a.includes('doc')||a.includes('note'))){const n=ds.length;steps.push('counted '+n+' docs/notes');return {filled:true,answer:n+' document'+(n===1?'':'s')+' and notes.',steps};}
+  const nums=ground.filter(g=>g.type==='table').flatMap(g=>g.rows.flatMap(r=>g.fields.map(f=>Number(r.v[f.id])).filter(n=>!isNaN(n))));
+  if(nums.length){const sum=nums.reduce((a,b)=>a+b,0);steps.push('summed '+nums.length+' values = '+sum);return {filled:true,answer:'Total: '+sum.toLocaleString()+' (over '+nums.length+' values).',steps};}
+  const tables=ground.filter(g=>g.type==='table');const files=ground.filter(g=>g.type==='file');
+  if(tables.length){steps.push('counted '+tables.length+' tables, '+tables.reduce((a,t)=>a+t.rows.length,0)+' rows');return {filled:true,answer:tables.length+' table'+(tables.length===1?'':'s')+', '+tables.reduce((a,t)=>a+t.rows.length,0)+' rows total.',steps};}
+  if(files.length){steps.push('counted '+files.length+' files');return {filled:true,answer:files.length+' file'+(files.length===1?'':'s')+'.',steps};}
+  const docs=ground.filter(g=>g.type==='doc');if(docs.length){steps.push('counted '+docs.length+' docs/notes');return {filled:true,answer:docs.length+' document'+(docs.length===1?'':'s')+' and notes.',steps};}
  }
  if(v.slot==='thing'){
-  const w=t=>v.question.split(' ').includes(t);
-  // search/list
-  if(w('list')||w('show')||w('what')&&(w('files')||w('tables')||w('docs')||w('notes')||w('all'))){
-   if(w('file')){steps.push('listed '+fl.length+' files');return {filled:true,answer:fl.length?fl.map(f=>f.name+' ('+fmtSize(f.size)+')').join('\n'):'No files yet.',steps};}
-   if(w('table')){steps.push('listed '+tbs.length+' tables');return {filled:true,answer:tbs.length?tbs.map(t=>t.name+' ('+t.r.length+' rows)').join('\n'):'No tables yet.',steps};}
-   if(w('doc')||w('note')){steps.push('listed '+ds.length+' docs/notes');return {filled:true,answer:ds.length?ds.map(d=>d.title).join('\n'):'No docs or notes yet.',steps};}
-   return null;
+  // list: if the question asks to list/show, return what's there
+  const asksList=anchor.some(w=>['list','show','what','all'].includes(w));
+  if(asksList&&!terms.length){steps.push('listed workspace overview');return {filled:true,answer:W().name+': '+tbs.length+' tables, '+fl.length+' files, '+ds.length+' docs/notes.',steps};}
+  // search: if there are search terms, search the ground
+  if(terms.length){
+   const hits=[];
+   for(const g of ground){
+    if(g.type==='table')for(const r of g.rows){const v2=JSON.stringify(r.v);if(terms.some(t=>v2.toLowerCase().includes(t)))hits.push(g.name+': '+g.fields.map(f=>r.v[f.id]).filter(x=>x!=null).join(' | '));}
+    if(g.type==='file'){if(terms.some(t=>g.name.toLowerCase().includes(t)))hits.push('file: '+g.name);
+     const isCsv=/csv/i.test(g.kind)||g.name.toLowerCase().endsWith('.csv');if(isCsv){const sc=srcOf?srcOf(g.name):null;if(sc){const rows=sc.rows.filter(r=>terms.some(t=>r.join(' ').toLowerCase().includes(t)));if(rows.length)rows.forEach(r=>hits.push('file: '+g.name+' \u2192 '+r.join(' | ')));}}}
+    if(g.type==='doc')if(terms.some(t=>(g.name+' '+g.text).toLowerCase().includes(t)))hits.push('doc: '+g.name);
+   }
+   if(hits.length){steps.push('searched '+terms.join(', ')+' \u2192 '+hits.length+' hit'+(hits.length===1?'':'s'));return {filled:true,answer:hits.join('\n'),steps};}
   }
-  // search/find
-  const searchWords=['search','find','look','locate'];const isSearch=searchWords.some(x=>w(x));
-  if(isSearch){const term=v.anchor.join(' ');const toks=askToks(term);const hits=[];
-   for(const tb of tbs)for(const r of tb.r){const vv=JSON.stringify(r.v);if(toks.some(x=>vv.toLowerCase().includes(x)))hits.push(tb.name+': '+tb.f.map(f=>r.v[f.id]).filter(x=>x!=null).join(' | '));}
-   for(const f of fl){if(toks.some(x=>f.name.toLowerCase().includes(x)))hits.push('file: '+f.name);
-    const isCsv=f.type.toLowerCase().includes('csv')||f.name.toLowerCase().endsWith('.csv');if(isCsv){const sc=srcOf(f.hash);if(sc){const rows=sc.rows.filter(r=>toks.some(t=>r.join(' ').toLowerCase().includes(t)));if(rows.length)rows.forEach(r=>hits.push('file: '+f.name+' \u2192 '+r.join(' | ')));}}}
-   for(const d of ds)if(toks.some(x=>(d.title+' '+blkText(d)).toLowerCase().includes(x)))hits.push('doc: '+d.title);
-   steps.push('searched '+toks.join(', ')+' \u2192 '+hits.length+' hit'+(hits.length===1?'':'s'));
-   return {filled:true,answer:hits.length?hits.join('\n'):'No matches for "'+term+'".',steps};
-  }
-  // cross-reference
-  const crossWords=['cross','cross-reference','compare','join','relate'];const isCross=crossWords.some(x=>w(x))||v.question.includes('cross')||v.question.includes('compare')||v.question.includes('join');
-  if(isCross){const cross=mechCross(v.question);if(cross)return cross;}
-  // lookup
-  const lookupWords=['what','tell','describe'];const isLookup=lookupWords.some(x=>w(x));
-  if(isLookup){const term=v.anchor.join(' ');const toks=askToks(term);
-   for(const tb of tbs)if(toks.some(x=>tb.name.toLowerCase().includes(x))){steps.push('found table '+tb.name);return {filled:true,answer:'table '+tb.name+' ('+tb.r.length+' rows): '+tb.f.map(f=>f.n).join(', '),steps};}
-   for(const f of fl)if(toks.some(x=>f.name.toLowerCase().includes(x))){steps.push('found file '+f.name);return {filled:true,answer:'file '+f.name+' ('+fmtSize(f.size)+', '+f.type+')',steps};}
-   for(const d of ds)if(toks.some(x=>d.title.toLowerCase().includes(x))){steps.push('found doc '+d.title);return {filled:true,answer:'doc "'+d.title+'": '+blkText(d).slice(0,200),steps};}
-  }
+  // lookup: if the question names a specific thing
+  const named=ground.filter(g=>terms.some(t=>g.name.toLowerCase().includes(t)));
+  if(named.length===1){steps.push('found '+named[0].type+' '+named[0].name);return {filled:true,answer:named[0].name+' ('+(named[0].rows?named[0].rows.length+' rows':named[0].size?fmtSize(named[0].size):'')+')',steps};}
  }
  return {filled:false,answer:null,steps};}
-function mechAnswer(q,att){const v=defVoid(q);const r=evaAgainst(v,att);if(r.filled)return {answer:r.answer,steps:r.steps,mech:true};
- // cross-reference: join tables on a shared field, aggregate, compare
- const cross=mechCross(q);if(cross)return cross;
- return null;}
-const CROSS_ALIAS={'supplier name':'vendor','vendor':'supplier name','name':'title','title':'name','person name':'vendor','contact':'vendor','buyer':'vendor','supplier':'vendor'};
 function mechCross(q){const t=String(q||'').trim().toLowerCase();const tbs=D.tb;
  const mentioned=tbs.filter(tb=>t.includes(tb.name.toLowerCase()));
  if(mentioned.length<2)return null;
