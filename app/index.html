@@ -342,12 +342,12 @@ function goTb(id){U.sel=id;U.tab='data';U.edit=null;render();}
 async function newTb(){const n=(document.getElementById('nt').value||'').trim()||'Untitled table';const id=uid('t');U.adding=null;
  await appendQ('tb+',{id,ws:U.ws,name:n});for(const f of [{n:'Name',t:'text'},{n:'Notes',t:'longtext'}])await appendQ('fld+',{tb:id,id:uid('f'),...f});D=fold();goTb(id);}
 async function newWs(){const n=(document.getElementById('nw').value||'').trim()||'Untitled workspace';const id=uid('w');U.adding=null;await appendQ('ws+',{id,name:n});D=fold();goWs(id);}
-const crumb=a=>'<div class="crumb"><button class="lk" onclick="goHome()">'+ic('hard-drives')+' Your database</button>'+ic('caret-right')+'<button class="lk" onclick="goHome()">'+ic('folder-open')+' '+esc(W().name)+'</button>'+(a?' '+ic('caret-right')+' '+a:'')+'</div>';
+const crumb=a=>'<div class="crumb"><button class="lk" onclick="goHome()">'+ic('folder-open')+' '+esc(W().name)+'</button>'+(a?' '+ic('caret-right')+' '+a:'')+'</div>';
 function goHome(){U.sel='ws';render();}/* ---- workspace home ---- */
 function vWs(){const tbs=wsTables(U.ws),fl=wsFiles(U.ws);
- let h=crumb('')+'<h1>'+esc(W().name)+'</h1><p class="sub">Tables, rows and fields below are not stored. They are folded from the signed log each time. Files are the only bytes kept besides the log.</p><div class="row">';
+ let h=crumb('')+'<h1>'+esc(W().name)+'</h1><div class="row">';
  h+='<div class="grow"><div class="gt">TABLES ('+tbs.length+')</div>'+(tbs.map(t=>'<div class="card" style="margin-bottom:8px;cursor:pointer" onclick="goTb(\''+t.id+'\')"><b>'+ic('table')+' '+esc(t.name)+'</b>'+(t.std?' <span class="chip c-n">follows '+t.std+'</span>':'')+'<div class="note">'+t.f.length+' fields, '+t.r.length+' rows</div></div>').join('')||'<p class="note">No tables yet.</p>')+'</div>';
- h+='<div class="grow"><div class="gt">FILES AND SOURCES</div>'+(fl.map(f=>{const csv=/csv/.test(f.type)||/\.csv$/i.test(f.name);const u=csv?unresolved(f.hash):0;return '<div class="card" style="margin-bottom:8px;cursor:pointer" onclick="openFile(\''+f.hash+'\')"><b>'+ic(csv?'file-csv':'file')+' '+esc(f.name)+'</b><div class="note">'+fmtSize(f.size)+'</div>'+(csv?'<div style="margin:8px 0">'+(u?'<span class="chip c-w">'+u+' columns need matching</span>':'<span class="chip c-ok">All columns reviewed</span>')+'</div><button class="b p" onclick="event.stopPropagation();openMatch(\''+f.hash+'\')">Match columns '+ic('arrow-right')+'</button>':'')+'</div>';}).join('')||'<p class="note">No files yet.</p>')+'</div></div>';
+ h+='<div class="grow"><div class="gt">Files</div>'+(fl.map(f=>{const csv=/csv/.test(f.type)||/\.csv$/i.test(f.name);const u=csv?unresolved(f.hash):0;return '<div class="card" style="margin-bottom:8px;cursor:pointer" onclick="openFile(\''+f.hash+'\')"><b>'+ic(csv?'file-csv':'file')+' '+esc(f.name)+'</b><div class="note">'+fmtSize(f.size)+'</div>';}).join('')||'<p class="note">No files yet.</p>')+'</div></div>';
  return h;}
 function openMatch(h){U.src=h;U.sel='match';U.mtab='match';render();}
 function openFile(h){U.sel='files';U.open=null;U.view=h;render();}
