@@ -67,6 +67,16 @@ export function verifyAll(dir, entries) {   // entries: [{ id, by }]
   return out;
 }
 
+// verifySignature: does `sigB64` (base64) verify as `data` under the writer's PINNED public key? False if the writer has no
+// pinned key or the signature does not verify. The pinned key is what makeKey wrote; a writer that later re-keys fails here.
+export function verifySignature(dir, writer, data, sigB64) {
+  const f = pubFile(dir, writer);
+  if (!fs.existsSync(f)) return false;
+  try {
+    return crypto.verify(null, Buffer.from(data), crypto.createPublicKey(fs.readFileSync(f, 'utf8')), Buffer.from(sigB64, 'base64'));
+  } catch { return false; }
+}
+
 // ---- trust and published SIG indexes ----------------------------------------------------------------------------------------
 const trustedFile = (dir) => path.join(P(dir).sigs, 'trusted.json');
 export const trusted = (dir) => { try { return JSON.parse(fs.readFileSync(trustedFile(dir), 'utf8')); } catch { return []; } };
