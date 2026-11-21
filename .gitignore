@@ -13,3 +13,5 @@ facade/.test-tmp*/
 sources/*
 !sources/NOTES.md
 !sources/INDEX.tsv
+# local route settings (may contain a mailbox token): never commit
+app/config.js

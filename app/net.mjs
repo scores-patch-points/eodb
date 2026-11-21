@@ -22,6 +22,24 @@ export function httpCarrier(base) {
   };
 }
 
+// mailboxCarrier(base, token): the same three calls against a mailbox server (app/mailbox/mailbox.mjs): objects at /v1/objects/<name>, a list at /v1/list.
+// The token, if any, goes in an Authorization header (never in a URL). A route is written  mailbox:<base url>#<token>  : the part after # is the token.
+export function mailboxCarrier(base, token) {
+  const root = base.replace(/\/+$/, ''), headers = token ? { authorization: `Bearer ${token}` } : {};
+  const path = (name) => name.split('/').map(encodeURIComponent).join('/');      // slashes stay slashes: names are paths
+  const bad = (r, what) => Object.assign(new Error(r.status === 401 ? `mailbox ${what}: the token was refused` : r.status === 413 ? `mailbox ${what}: full or too large` : `mailbox ${what} failed: ${r.status}`), { status: r.status });
+  return {
+    async list() { const r = await fetchT(`${root}/v1/list`, { headers }); if (!r.ok) throw bad(r, 'list'); return (await r.json()).objects.map((o) => o.name); },
+    async get(name) { const r = await fetchT(`${root}/v1/objects/${path(name)}`, { headers }); if (r.status === 404) return null; if (!r.ok) throw bad(r, 'get'); return new Uint8Array(await r.arrayBuffer()); },
+    async putNew(name, bytes) {
+      const r = await fetchT(`${root}/v1/objects/${path(name)}`, { method: 'PUT', headers, body: bytes });
+      if (r.status === 409) throw Object.assign(new Error(`${name} exists; carriers never overwrite`), { status: 409 });
+      if (!r.ok) throw bad(r, 'put');
+    },
+  };
+}
+export const parseMailboxRoute = (uri) => { const body = uri.slice('mailbox:'.length), i = body.lastIndexOf('#'); return i < 0 ? { base: body, token: '' } : { base: body.slice(0, i), token: decodeURIComponent(body.slice(i + 1)) }; };
+
 export const importKey = (hex) => globalThis.crypto.subtle.importKey('raw', Uint8Array.from(hex.match(/../g), (x) => parseInt(x, 16)), { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
 export const newSpaceKey = () => [...globalThis.crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, '0')).join('');
 

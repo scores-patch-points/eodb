@@ -107,10 +107,21 @@ test('10. links are checked: malformed, incomplete and old single-relay forms', 
   assert.deepEqual(parseJoin(enc({ relay: 'http://old', key: k, root: k, invite: 'x' })).routes, ['relay:http://old']);
 });
 
-test('11. a file object whose bytes do not match its hash name is refused, even if sealed with the right key', async () => {
+test('11. a file object whose bytes do not match its hash is refused, even if sealed with the right key', async () => {
   const r = await relay(); const { A, G, link } = await pair([r.url]); const j = parseJoin(link);
   const { sealedCarrier, httpCarrier, importKey } = await import('../net.mjs'); const carrier = sealedCarrier(httpCarrier(r.url), await importKey(j.key));
   const real = new TextEncoder().encode('the real file'), h = sha(real); const fake = new TextEncoder().encode('SUBSTITUTED CONTENT'); const payload = new Uint8Array(1 + fake.length); payload.set(fake, 1);
-  await carrier.putNew(`blob/${h}`, payload);                         // a hostile route (or member) serves other bytes under the real file's name
-  await G.syncOnce(); assert.equal(G.blobs.has(h), false, 'rejected: the bytes do not hash to the name'); assert.ok(A);
+  A.append('file+', { ws: 'w1', hash: h, name: 'x.txt', size: real.length, type: 'text/plain', at: 'now' }); await A.syncOnce();
+  await carrier.putNew(await A.blobName(h), payload);                 // a hostile route (or member) serves other bytes under the real file's object name
+  await G.syncOnce(); assert.equal(G.blobs.has(h), false, 'rejected: the bytes do not hash to the file hash');
 });
+
+test('12. two spaces on ONE server holding the same file each get their own copy: names are per space, and the server cannot see file hashes', async () => {
+  const r = await relay(); const bytes = new TextEncoder().encode('the same file in both spaces'), h = sha(bytes);
+  const mkPair = async () => { const A = await open(mk()); for (const [op, body] of BASE) A.append(op, body); A.blobs.put(h, bytes, 'text/plain'); A.append('file+', { ws: 'w1', hash: h, name: 'same.txt', size: bytes.length, type: 'text/plain', at: 'now' }); const link = await A.share({ routes: [`relay:${r.url}`] }); await A.settle(); const G = await open(mk(), { join: link }); return { A, G }; };
+  const one = await mkPair(), two = await mkPair(); await one.G.syncOnce(); await two.G.syncOnce();
+  assert.equal(new TextDecoder().decode(one.G.blobs.get(h).bytes), 'the same file in both spaces'); assert.equal(new TextDecoder().decode(two.G.blobs.get(h).bytes), 'the same file in both spaces');
+  const names = [...r.store.keys()].filter((n) => n.startsWith('blob/')); assert.equal(names.length, 2, 'one object per space, not one shared object');
+  assert.ok(names.every((n) => !n.includes(h)), 'no object name contains the file hash');
+});
+
