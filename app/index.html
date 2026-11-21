@@ -1197,7 +1197,7 @@ function retrieve(q,att){const tbs=wsTables(U.ws),fl=wsFiles(U.ws),ds=wsDocs(U.w
  const KT=window.KhoraText,qs=(()=>{try{return KT?(KT.extractSurfaces(KT.splitSentences(q))||[]).map(x=>x.surface).filter(Boolean).slice(0,6):[];}catch(e){return[];}})();
  const hit=s=>{let sc=toks.reduce((n,t)=>n+((s.toLowerCase().includes(t))?1:0),0);if(KT&&qs.length){const ws=String(s).toLowerCase().split(/[^a-z0-9]/);for(const w of ws){if(w.length<3)continue;for(const qn of qs){if(KT.namesCorefer(qn,w)){sc+=3;break;}}}}return sc;};
  if(toks.length===0&&!(att&&att.length))return [];
- const cand=[],add=(sc,str)=>str&&cand.push({sc,str});
+  const cand=[],add=(sc,str,addr)=>str&&cand.push({sc,str,addr});
  for(const f of attachFacts(att))add(100,f);
  // fold the files through their reading results (READS) — names, referents, relations, not raw bytes
  for(const f of fl){
@@ -1221,27 +1221,28 @@ function retrieve(q,att){const tbs=wsTables(U.ws),fl=wsFiles(U.ws),ds=wsDocs(U.w
    if(isCsv){const sc2=srcOf(f.hash);if(sc2){str+='\n  ['+sc2.rows.length+' rows: '+sc2.cols.join(', ')+']';if(sc2.rows.length)str+='\n  '+sc2.rows.slice(0,5).map(r=>r.join(' | ')).join('\n  ');}}
   }
   const body=str;const sc=hit(f.name)+hit(body)+(isCsv?1:0);
-  if(sc>0||toks.length===0)add(sc||1,body);
+   if(sc>0||toks.length===0)add(sc||1,body,'file:'+f.hash);
  }
  // tables (already folded from log entries)
  for(const t of tbs){
   let str='table '+t.name+' ('+t.r.length+' rows): '+t.f.map(f=>f.n).join(', ');
   if(t.r.length&&t.r.length<=6){const rows=t.r.slice(0,6).map(r=>{const p=t.f.map(f=>{const v=r.v[f.id];return (v==null||v==='')?null:(f.n+'='+v);}).filter(Boolean);return p.length?('  '+p.join(' | ')):null;}).filter(Boolean);if(rows.length)str+='\n'+rows.join('\n');}
   const sc=hit(t.name)+hit(t.f.map(f=>f.n).join(' '))+hit(str);
-  if(sc>0||toks.length===0)add(sc||1,str);
+   if(sc>0||toks.length===0)add(sc||1,str,'tb:'+t.id);
  }
  // docs/notes (already folded from log entries)
  for(const d of ds){const tx=blkText(d);const body=(d.kind==='note'?'note':'doc')+' "'+d.title+'": '+tx.slice(0,140);
   let names='';if(KT&&tx){try{const su=KT.extractSurfaces(KT.splitSentences(tx))||[];const ns=su.map(x=>x.surface).filter(Boolean).slice(0,8);if(ns.length)names=' (names: '+ns.join(', ')+')';}catch(e){}}
   const body2=body+names;const sc=hit(d.title)+hit(tx);
-  if(sc>0||toks.length===0)add(sc||1,body2);
+   if(sc>0||toks.length===0)add(sc||1,body2,'doc:'+d.id);
  }
  cand.sort((a,b)=>b.sc-a.sc);
  let out=[],total=0;
- for(const c of cand){if(out.length>=6||total+c.str.length>1400)break;out.push(c.str);total+=c.str.length;}
+  for(const c of cand){if(out.length>=6||total+c.str.length>1400)break;out.push((c.addr?'['+c.addr+'] ':'')+c.str);total+=c.str.length;}
  if(!out.length)out.push('database "'+W().name+'" has '+tbs.length+' tables, '+fl.length+' files, '+ds.length+' docs.');
  return out;}
 function md(s){if(!s)return'';const codes=[];let t=String(s).replace(/```([\s\S]*?)```/g,(m,c)=>{codes.push(c);return '\u0000'+(codes.length-1)+'\u0000';});t=esc(t);
+ t=t.replace(/\[((?:file|tb|doc|cell):[A-Za-z0-9._-]+)\]/g,'<a class="src" onclick="goSrc(\'$1\')" title="open source">[$1]</a>');
  t=t.replace(/`([^`]+)`/g,'<code>$1</code>');
  t=t.replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');t=t.replace(/__([^_]+)__/g,'<b>$1</b>');
  t=t.replace(/(^|[^*])\*([^*\s][^*]*)\*/g,'$1<i>$2</i>');
@@ -1253,10 +1254,25 @@ function md(s){if(!s)return'';const codes=[];let t=String(s).replace(/```([\s\S]
  t=t.replace(/\u0000(\d+)\u0000/g,(m,i)=>'<pre class="code">'+esc(codes[+i])+'</pre>');
  return t.replace(/\n/g,'<br>');}
 async function askModel(user,system,onChunk){const r=await fetch(EODB_MODEL.url+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:EODB_MODEL.model,stream:true,messages:[{role:'system',content:system||personaFor(user)},{role:'user',content:user}],options:{temperature:0.2}})});if(!r.ok)throw new Error('local model HTTP '+r.status);const reader=r.body.getReader(),dec=new TextDecoder();let buf='',full='';while(true){const {done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf('\n'))>=0){const line=buf.slice(0,i).trim();buf=buf.slice(i+1);if(!line)continue;let j;try{j=JSON.parse(line);}catch(e){continue;}const t=j.message&&j.message.content;if(t){full+=t;if(onChunk)onChunk(t);}if(j.done){const a=full.trim();if(!a)throw new Error('empty model response');return a;}}}const a=full.trim();if(!a)throw new Error('empty model response');return a;}
-async function longform(topic,att,onChunk){const facts=retrieve(topic,att);const user0='DATA:\n'+facts.join('\n')+'\n\nWrite a short report on: '+topic+'. Use ## headers for each section (3-5 sections). No bullet points, no lists. One paragraph per section. Cite the table or file each fact comes from.';
- let full='';try{full=await askModel(user0,personaFor(topic),(tok)=>{if(onChunk)onChunk(tok);});}catch(e){full='';}
- if(!full)full='No report could be generated.';
- return {answer:full,facts,system:personaFor(topic),user:user0,checks:[]};}
+// void-spec: parse a model-written outline ("## section", "### subsection") into a tree. Recursive (sub-sections nest).
+function parseOutline(text){const root={title:'',children:[]};const stack=[{depth:0,node:root}];for(const line of String(text||'').split('\n')){const m=line.match(/^(#{2,4})\s+(.+)$/);if(!m)continue;const depth=m[1].length-1;const node={title:m[2].trim(),children:[]};while(stack.length>1&&stack[stack.length-1].depth>=depth)stack.pop();stack[stack.length-1].node.children.push(node);stack.push({depth,node});}return root;}
+// longform as a holarchy of voids: declare the tree (void-spec), then walk it recursively filling each leaf (hora).
+// One user prompt; the system prompts itself first for an outline, then once per leaf section, recursing into sub-sections.
+async function longform(topic,att,onChunk){const facts=retrieve(topic,att);
+ const sources=[...new Set(facts.map(f=>{const m=f.match(/^\[([^\]]+)\]/);return m?m[1]:'';}).filter(Boolean))];
+ const spec='DATA:\n'+facts.slice(0,6).join('\n')+'\n\nWrite an outline for a report on: '+topic+'. Use "## " for sections and "### " for subsections. 3-5 sections.';
+ let outline=null;try{outline=await askModel(spec,personaFor(topic));}catch(e){outline=null;}
+ let tree=parseOutline(outline);
+ if(!tree.children.length)tree.children=[{title:'Overview',children:[]},{title:'Details',children:[]},{title:'Notes',children:[]}];
+ const out=[];let recCount=0,leaves=0;
+ async function fill(node,depth){
+  const h='#'.repeat(Math.min(depth+1,4))+' '+node.title;out.push(h+'\n');if(onChunk)onChunk(h+'\n');
+  if(node.children.length){for(const c of node.children)await fill(c,depth+1);}
+  else{leaves++;const u='DATA:\n'+facts.slice(0,4).join('\n')+'\n\nWrite one paragraph (3-5 sentences) for the section "'+node.title+'" of a report on "'+topic+'". No bullets or lists.\n\nPARAGRAPH:';let para='';try{para=await askModel(u,personaFor(node.title));}catch(e){para='';}const eva=evaRules(para);if(!eva.ok){recCount++;para=recRules(para);}out.push(para+'\n\n');if(onChunk)onChunk(para+'\n\n');}
+ }
+ for(const c of tree.children)await fill(c,1);
+ if(sources.length){const sblock='\nSources:\n'+sources.map(s=>'- ['+s+']').join('\n');out.push(sblock);if(onChunk)onChunk(sblock);}
+ return {answer:out.join(''),facts,sources,system:personaFor(topic),user:spec,checks:[{s:'void-satisfaction: '+leaves+' section(s), '+recCount+' re-grounded',standing:recCount===0?'supported':'partial'}]};}
 function fallbackAnswer(q,facts){return 'Local model not reachable, so here is what the fold says:\n\n'+facts.slice(0,12).join('\n');}
 // The judge is The Fold's own falsifier (fold-chat-falsify-answer.js), bundled with the language priors stubbed
 // (they load from Zenodotus, not here). Verdicts -> standings, exactly as the profile does.

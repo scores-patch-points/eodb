@@ -260,12 +260,16 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
       const e = core.weave(h, spec); soon();
       return shape(e, space.view().length);
     },
+    /** weave an arbitrary entry (any kind/cell, with `of` links) — the stigmergic write path, not tied to the page's OPS */
+    weaveRaw(entry) { const e = core.weave(h, entry); soon(); return e; },
     /** the page's LOG: app entries in causal order, in the page's shape */
     view() {
       const out = []; let i = 0;
       for (const e of core.entries(h)) { if (INFRA.has(e.kind) || !KIND_OP[e.kind]) continue; out.push(shape(e, ++i)); }
       return out;
     },
+    /** every entry in causal order (any kind) — the raw log for SEGging a saliency region */
+    raw() { return core.entries(h); },
     /** make this space shareable: returns a link that opens it on another device. `routes` are the ways to reach this space (today: relay:<url>). */
     async share({ routes: rs = [] } = {}) {
       if (guest) throw new core.PharosError('NOT_FOUNDER', 'only the device that made the space can create share links');

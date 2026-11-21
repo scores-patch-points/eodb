@@ -27,3 +27,6 @@ demo/log/
 !.dev.vars.example
 .env*
 !.env.example
+
+# spaces are encrypted data, not source
+spaces/
