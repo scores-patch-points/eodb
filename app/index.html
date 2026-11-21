@@ -310,12 +310,12 @@ async function seed(){
  const T=async(id,ws,name,std,fs)=>{await appendQ('tb+',{id,ws,name,std});for(const f of fs)await appendQ('fld+',{tb:id,id:uid('f'),...f});};
  await T('t1',w1,'Contracts','OCDS',[{n:'Supplier name',t:'text',m:'ocds:awards.suppliers.name'},{n:'Award amount',t:'currency',m:'ocds:awards.value.amount'},{n:'Award date',t:'date',m:'ocds:awards.date'},{n:'Buyer',t:'single',m:'ocds:buyer.name'},{n:'Contact',t:'link',to:'People'},{n:'Status',t:'single'},{n:'Contract file',t:'attach'},{n:'Days since award',t:'formula',x:'TODAY()-{Award date}'}]);
  await T('t2',w1,'People','Popolo',[{n:'Person name',t:'text',m:'popolo:Person.name'},{n:'Role held',t:'single',m:'popolo:Membership.role'},{n:'Email',t:'email'},{n:'Verified',t:'checkbox'}]);
- await T('t3',w2,'Cases',null,[{n:'Case number',t:'text'},{n:'Stage',t:'single'},{n:'Hearing date',t:'date'},{n:'Fee collected',t:'currency'}]);
+ await T('t3',w2,'Cases',null,[{n:'Case number',t:'text'},{n:'Vendor',t:'text'},{n:'Stage',t:'single'},{n:'Hearing date',t:'date'},{n:'Fee collected',t:'currency'}]);
  await T('t4',w2,'Clients',null,[{n:'Name',t:'text'},{n:'Notes',t:'longtext'}]);
  await T('t5',w3,'Notes',null,[{n:'Title',t:'text'},{n:'Body',t:'longtext'},{n:'Done',t:'checkbox'}]);
  D=fold();
  const fid=(tb,n)=>D.tb.find(t=>t.id===tb).f.find(f=>f.n===n).id;
- await appendQ('rows+',{tb:'t3',rows:[{id:uid('r'),v:{[fid('t3','Case number')]:'A-2201',[fid('t3','Stage')]:'Filed',[fid('t3','Hearing date')]:'2026-12-04',[fid('t3','Fee collected')]:1500}},{id:uid('r'),v:{[fid('t3','Case number')]:'A-2202',[fid('t3','Stage')]:'Hearing',[fid('t3','Hearing date')]:'2027-01-18',[fid('t3','Fee collected')]:0}}]});
+ await appendQ('rows+',{tb:'t3',rows:[{id:uid('r'),v:{[fid('t3','Case number')]:'A-2201',[fid('t3','Vendor')]:'Motorola Solutions',[fid('t3','Stage')]:'Filed',[fid('t3','Hearing date')]:'2026-12-04',[fid('t3','Fee collected')]:1500}},{id:uid('r'),v:{[fid('t3','Case number')]:'A-2202',[fid('t3','Vendor')]:'Axon Enterprise Inc',[fid('t3','Stage')]:'Hearing',[fid('t3','Hearing date')]:'2027-01-18',[fid('t3','Fee collected')]:2500}},{id:uid('r'),v:{[fid('t3','Case number')]:'A-2203',[fid('t3','Vendor')]:'Flock Safety',[fid('t3','Stage')]:'Filed',[fid('t3','Hearing date')]:'2026-11-20',[fid('t3','Fee collected')]:800}},{id:uid('r'),v:{[fid('t3','Case number')]:'A-2204',[fid('t3','Vendor')]:'Motorola Solutions',[fid('t3','Stage')]:'Hearing',[fid('t3','Hearing date')]:'2027-02-10',[fid('t3','Fee collected')]:3200}}]});
  await appendQ('rows+',{tb:'t5',rows:[{id:uid('r'),v:{[fid('t5','Title')]:'Oracle HQ walkthrough',[fid('t5','Body')]:'Site visit notes',[fid('t5','Done')]:false}}]});
  SEED_HASH=await putBlob(enc.encode(SEED_CSV),'text/csv');
  await appendQ('file+',{ws:w1,hash:SEED_HASH,name:'metro-contracts.csv',size:enc.encode(SEED_CSV).length,type:'text/csv',at:'Nov 20'});
@@ -1194,7 +1194,50 @@ function evaAgainst(v,att){const steps=[];const tbs=wsTables(U.ws),fl=wsFiles(U.
   }
  }
  return {filled:false,answer:null,steps};}
-function mechAnswer(q,att){const v=defVoid(q);const r=evaAgainst(v,att);if(r.filled)return {answer:r.answer,steps:r.steps,mech:true};return null;}
+function mechAnswer(q,att){const v=defVoid(q);const r=evaAgainst(v,att);if(r.filled)return {answer:r.answer,steps:r.steps,mech:true};
+ // cross-reference: join tables on a shared field, aggregate, compare
+ const cross=mechCross(q);if(cross)return cross;
+ return null;}
+function mechCross(q){const t=String(q||'').trim().toLowerCase();const tbs=wsTables(U.ws);
+ // identify tables mentioned in the question
+ const mentioned=tbs.filter(tb=>t.includes(tb.name.toLowerCase()));
+ if(mentioned.length<2)return null;
+ // find a shared field (by name) across the mentioned tables
+ const fields=mentioned.map(tb=>tb.f);let shared=null;
+ for(const f of fields[0]){if(fields.slice(1).every(fs=>fs.some(x=>x.n.toLowerCase()===f.n.toLowerCase()))){shared=f;break;}}
+ if(!shared){
+  // try by standard term
+  for(const f of fields[0]){if(f.m&&fields.slice(1).every(fs=>fs.some(x=>x.m===f.m))){shared=f;break;}}
+ }
+ if(!shared)return {answer:'No shared field found between '+mentioned.map(t=>t.name).join(' and ')+'.',steps:['no join key'],mech:true};
+ // build join: for each row in the first table, find matching rows in the others
+ const t0=mentioned[0],t1=mentioned[1];
+ const rows0=t0.r,rows1=t1.r;
+ const results=[];
+ for(const r0 of rows0){
+  const v0=r0.v[shared.id];const matches=rows1.filter(r1=>r1.v[shared.id]===v0);
+  if(matches.length){
+   // aggregate: sum numeric fields
+   const agg0={},agg1={};
+   for(const f of t0.f){const vals=rows0.filter(r=>r.v[shared.id]===v0).map(r=>Number(r.v[f.id])).filter(n=>!isNaN(n));if(vals.length)agg0[f.n]=vals.reduce((a,b)=>a+b,0);}
+   for(const f of t1.f){const vals=matches.map(r=>Number(r.v[f.id])).filter(n=>!isNaN(n));if(vals.length)agg1[f.n]=vals.reduce((a,b)=>a+b,0);}
+   results.push({key:v0,agg0,agg1,count:matches.length});
+  }
+ }
+ if(!results.length)return {answer:'No matching rows found between '+t0.name+' and '+t1.name+' on "'+shared.n+'".',steps:['join on '+shared.n+' \u2192 0 matches'],mech:true};
+ // build answer
+ const lines=['Cross-reference: '+t0.name+' \u2194 '+t1.name+' (join on "'+shared.n+'")'];
+ for(const res of results){
+  const parts=[res.key+':'];
+  for(const [k,v] of Object.entries(res.agg0))parts.push(t0.name+'.'+k+'='+v);
+  for(const [k,v] of Object.entries(res.agg1))parts.push(t1.name+'.'+k+'='+v);
+  // ratio check
+  const a0=Object.values(res.agg0).find(v=>typeof v==='number');const a1=Object.values(res.agg1).find(v=>typeof v==='number');
+  if(a0&&a1&&a1>0){const ratio=a0/a1;if(ratio>2)parts.push('RATIO '+ratio.toFixed(1)+':1 \u2014 EXCEEDS 2:1');}
+  lines.push(parts.join(' | '));
+ }
+ steps.push('joined '+t0.name+' \u2194 '+t1.name+' on "'+shared.n+'" \u2192 '+results.length+' match'+(results.length===1?'':'es'));
+ return {answer:lines.join('\n'),steps,mech:true};}
 // DEF/EVA/REC: the instruction set is the void; the mouth's output is evaluated against it; violations re-ground.
 // DEF: declare the instruction void — what must hold about the answer.
 function defRules(q,withData){const toks=askToks(q);const rules=(window.PERSONA_RULES||[]).filter(ru=>(ru.tags||[]).includes('*')||(ru.tags||[]).some(t=>toks.includes(t)));
