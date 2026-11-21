@@ -16,6 +16,7 @@ import * as Loc from './vendor/pharos/locator.mjs';
 import { gate } from './vendor/pharos/gate.mjs';
 import * as N from './net.mjs';
 import * as G from './graph.mjs';
+import { makeName } from './naming.mjs';
 
 // the page's operation names  ->  [pharos kind, cell]. Creating things is INS; setting a value on an existing thing is DEF (so two devices setting the
 // same cell at once are reported as a held conflict, never silently resolved); a retraction is NUL; reading a file is EVA; linking a column to a
@@ -30,7 +31,7 @@ export const OPS = {
   'auto+': ['auto', 'INS·Figure'],
 };
 const KIND_OP = Object.fromEntries(Object.entries(OPS).map(([op, [kind]]) => [kind, op]));
-const INFRA = new Set(['frame', 'kind', 'signature', 'capability', 'device-key', 'recovery', 'locator', 'safe-copy', 'ack']);
+const INFRA = new Set(['frame', 'kind', 'signature', 'capability', 'device-key', 'recovery', 'locator', 'safe-copy', 'ack', 'device-name']);
 
 const hex = (u) => [...u].map((b) => b.toString(16).padStart(2, '0')).join('');
 const unhex = (h) => Uint8Array.from(h.match(/../g) || [], (x) => parseInt(x, 16));
@@ -79,7 +80,7 @@ export function parseJoin(link) {
   return b;
 }
 
-export async function openSpace({ name = 'eodb', backend, blobBackend, cells, tab, passphrase, iterations, join, autosync = true, syncMs = 2500 } = {}) {
+export async function openSpace({ name = 'eodb', backend, blobBackend, cells, tab, passphrase, iterations, join, autosync = true, syncMs = 2500, adapters = {}, names = [] } = {}) {
   if (!backend || !blobBackend || !cells) throw new Error('openSpace needs backend, blobBackend and cells');
   core.configure({ cells }); I.usePure();
   const store = await B.openBrowserStore({ name, backend, passphrase, iterations });
@@ -96,6 +97,12 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
   const devId = dev.pub.slice(0, 8), tabId = tab || globalThis.crypto.getRandomValues(new Uint8Array(2)).reduce((s, b) => s + b.toString(16).padStart(2, '0'), '');
   const writer = guest ? `guest.${devId}.${tabId}` : `${devId}.${tabId}`, roots = guest ? { [share.root]: true } : { [root.pub]: true };
 
+  // the device's human-readable name (node-naming): spun up once at creation, kept beside the seed, and (for a founder) woven
+  // into the log so peers see it. The Ed25519 key stays the UUID; this is the readable handle rendered in its deterministic colour.
+  let deviceName = await store.getSecret('device-name');
+  if (!deviceName) { deviceName = te.encode(makeName(names)); await store.putSecret('device-name', deviceName); }
+  deviceName = td.decode(deviceName);
+
   // A guest does not make a frame, schema or account: it receives the founder's (the log is the database), then takes its own grant from the invite key.
   const h = core.open(name, { writer, store, frame: !guest });
   const first = !guest && !core.entries(h).some((e) => e.kind === 'capability');
@@ -105,6 +112,8 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
     for (const [op, [kind, cell]] of Object.entries(OPS)) if (kind !== 'retract' && !have.has(kind)) core.weave(h, { cell: 'DEF·Figure', kind: 'kind', addr: `kind:${kind}`, body: { name: kind, cell } });
     const granted = core.fold(h).entries.some((e) => e.kind === 'capability' && e.body && e.body.subject === dev.pub);
     if (!granted) A.grantCap(h, root, { subject: dev.pub, writer: `${devId}.*`, scope: '*', rights: ['read', 'write', 'grant'] });
+    if (!core.entries(h).some((e) => e.kind === 'kind' && e.body && e.body.name === 'device-name')) core.weave(h, { cell: 'DEF·Figure', kind: 'kind', addr: 'kind:device-name', body: { name: 'device-name', cell: 'INS·Figure' } });
+    if (!core.fold(h).entries.some((e) => e.kind === 'device-name' && e.body && e.body.device === dev.pub)) core.weave(h, { cell: 'INS·Figure', kind: 'device-name', addr: `device-name:${dev.pub.slice(0, 16)}`, body: { device: dev.pub, name: deviceName } });
   }
 
   // verification: done in full once at open, then incrementally for what this device signs
@@ -131,6 +140,7 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
     http: (uri) => N.httpCarrier(uri.slice('http:'.length)),
     mailbox: (uri) => { const { base, token } = N.parseMailboxRoute(uri); return N.mailboxCarrier(base, token); },   // a mailbox server (app/mailbox/mailbox.mjs); the token rides in the route after #
     lora: (uri) => { const [base, q] = uri.slice('lora:'.length).split('?'); const p = new URLSearchParams(q || ''); const mtu = Number(p.get('mtu')) || 200; const duty = p.has('duty') ? Number(p.get('duty')) : 0.01; return N.chunkedCarrier(N.politeCarrier(N.httpCarrier(base), { dutyCycle: duty }), { mtu }); },
+    ...adapters,
   };
   let spaceKey = null; const getKey = async () => spaceKey || (spaceKey = await N.importKey(share.key));
   // the space key (raw hex): exists once the space is shared, or is minted on demand for a solo founder. File keys derive from it.
@@ -152,7 +162,7 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
   async function routes() {
     const uris = [...new Set([...(share ? share.routes : []), ...learned()])], out = [];
     const key = share ? await getKey() : null;
-    for (const uri of uris) { const scheme = uri.split(':')[0]; const make = rawAdapters[scheme]; if (!make) continue; try { const raw = make(uri); out.push({ uri, raw, carrier: track(uri, key ? N.sealedCarrier(raw, key) : raw) }); } catch (e) { routeHealth.set(uri, { ok: false, error: String(e.message || e), at: Date.now() }); } }
+    for (const uri of uris) { const scheme = uri.split(':')[0]; const make = rawAdapters[scheme]; if (!make) continue; try { const raw = await make(uri); out.push({ uri, raw, carrier: track(uri, key ? N.sealedCarrier(raw, key) : raw) }); } catch (e) { routeHealth.set(uri, { ok: false, error: String(e.message || e), at: Date.now() }); } }
     return out;
   }
   // File contents travel as sealed objects. Their NAMES are a keyed hash of the file's hash (blob/<hmac>), per space: two spaces on one server never
@@ -280,6 +290,10 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
     syncOnce, get role() { return guest ? 'guest' : share ? 'founder' : 'solo'; },   // live: a solo space becomes a founder's the moment it is shared
     /** devices seen in the log (the writer id before the tab part) */
     peers() { const d = new Set(); for (const e of core.entries(h)) if (!INFRA.has(e.kind) && KIND_OP[e.kind]) d.add(e.by.split('.').slice(0, e.by.startsWith('guest.') ? 2 : 1).join('.')); return [...d]; },
+    /** this device's human-readable name (word_HEXCODE), spun up once at creation */
+    deviceName,
+    /** every device's name in the log: { devicePubKey -> name } */
+    deviceNames() { const m = {}; for (const e of core.fold(h).entries) if (e.kind === 'device-name' && e.body && e.body.device && e.body.name) m[e.body.device] = e.body.name; return m; },
     /** wait until everything so far is signed and saved; rejects with the real error if saving failed */
     async settle() { clearTimeout(timer); timer = null; signNow(); try { await store.flush(); await blobStore.flush(); } finally { status(); } },
     verify() { recompute(); return { counted: okSet.size, uncounted: A.verifyAccess(h, { roots }).uncounted }; },

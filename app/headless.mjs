@@ -9,9 +9,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openSpace } from './engine.mjs';
 import { fsBackend } from './fs-backend.mjs';
+import { directAdapter } from './tcp.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const cells = JSON.parse(fs.readFileSync(path.join(here, 'vendor', 'pharos', 'cells.json'), 'utf8'));
+const names = JSON.parse(fs.readFileSync(path.join(here, 'vendor', 'node-names.json'), 'utf8'));
 
 const argv = process.argv.slice(2);
 const flags = {};
@@ -29,7 +31,7 @@ const space = await openSpace({
   name: flags.name || 'eodb',
   backend: fsBackend(path.join(dir, 'store')),
   blobBackend: fsBackend(path.join(dir, 'blobs')),
-  cells, passphrase,
+  cells, names, passphrase,
   join: flags.join || undefined,
   autosync: true, syncMs: Number(flags.syncMs || 5000),
 });
