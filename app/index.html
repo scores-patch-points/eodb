@@ -1090,6 +1090,7 @@ function vProfile(){const r=ENGINE.report(),role=ENGINE.role,peers=ENGINE.peers(
  h+='</div></div>';
  h+='<div class="gt">THIS DEVICE</div><div class="card"><div class="fh"><b>'+ic('key')+' '+nodeLabel(ENGINE.deviceName)+'</b><span class="tag">'+esc(ENGINE.writer)+'</span>'+(r.unsigned?'<span class="chip c-w">'+r.unsigned+' signing</span>':'<span class="chip c-ok">'+ic('shield-check')+' all signed</span>')+'</div><div class="note" style="margin-top:6px">Signed with Ed25519 through a device-key grant, stored encrypted on '+esc(r.backend)+'.</div></div>';
  h+='<div class="gt">DEVICES</div><div class="card"><div class="note">'+peers.length+' device'+(peers.length===1?'':'s')+' so far in this space.</div></div>';
+ h+='<div class="gt">BROWSER EXTENSION</div><div class="card"><div class="note">Run this space in a background worker, and read any page you\'re on. Download, unzip, then load unpacked at chrome://extensions.</div><div style="margin-top:10px"><a class="b p" style="text-decoration:none" href="/extension.zip" download>'+ic('download-simple')+' Download the extension</a></div></div>';
  h+='<div class="gt">SIGN IN WITH ANOTHER DEVICE</div><div class="card">';
  if(role==='guest')h+='<div class="note">You joined this space. Ask whoever shared it with you for their sign-in code, and open the link it points to.</div>';
  else if(U.qr)h+='<div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap"><img id="qrimg" alt="Sign-in code" style="width:300px;height:300px;border:1px solid var(--line);border-radius:8px;background:var(--s1);padding:8px"><div style="flex:1;min-width:260px"><div class="note">Point your other device\'s camera at the code, or open this link there:</div><input readonly style="width:100%;margin-top:8px" value="'+esc(U.shareLink)+'" onclick="this.select()"><div class="fh" style="margin-top:8px"><button class="b p" onclick="copyLink()">Copy link</button><button class="b" onclick="sendSpace()">'+ic('envelope')+' Send</button><button class="b" onclick="stopSharing()">Stop sharing</button></div></div></div>';
@@ -1366,11 +1367,26 @@ function voice(raw){if(!raw)return '';let t=String(raw);
  t=kept.join(' ');
  t=t.replace(/\n{3,}/g,'\n\n');
  return t.trim();}
+// ---- web research (foldcode's researching capacity, toy version) ----
+// search the web (Wikipedia, direct, no proxy), fetch the article, read it, ground the answer in it
+async function webSearch(q){const r=await fetch('https://en.wikipedia.org/w/api.php?action=opensearch&search='+encodeURIComponent(q)+'&limit=5&namespace=0&format=json');const d=await r.json();return (d[1]||[]).map((t,i)=>({title:t,url:d[3][i]}));}
+async function fetchArticle(title){const r=await fetch('https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&titles='+encodeURIComponent(title)+'&format=json');const d=await r.json();const pages=d.query&&d.query.pages;const p=pages&&Object.values(pages)[0];return (p&&p.extract)||'';}
+async function research(q){
+ const results=await webSearch(q);const ground=[];
+ for(const res of results.slice(0,3)){const text=await fetchArticle(res.title);if(text.length>100){const snip=text.slice(0,800);ground.push('Wikipedia "'+res.title+'": '+snip);}}
+ if(!ground.length)return null;
+ const facts=ground;const user='DATA:\n'+facts.join('\n\n')+'\n\nQuestion: '+q;
+ let mouth=null;try{mouth=await askModel(user,personaFor(q));}catch(e){mouth=null;}
+ const answer=mouth?voice(mouth):(fallbackAnswer(q,facts));
+ const checks=gradeAnswer(answer,facts);
+ return {answer,facts,system:personaFor(q),user,checks,mouth};}
 async function ask(q,att,onChunk){const t=String(q||'').trim().toLowerCase();const greet=/^(hi|hello|hey|how are you|whats up|what's up|yo|sup|good (morning|afternoon|evening))\b/.test(t);
  if(!(att&&att.length)&&greet){return {answer:'Doing well \u2014 what can I help you with?',facts:[],system:personaFor(q),user:q,checks:[],mech:true};}
  const mech=mechAnswer(q,att);if(mech){return {answer:mech.answer,facts:[],system:'(mechanical \u2014 no model)',user:q,checks:[{s:mech.steps.join(' \u2192 '),standing:'supported'}],mech:true};}
  const facts=retrieve(q,att);const withData=facts.length>0||(att&&att.length>0);
+ const isResearch=/\b(research|look up|find out|what is|who is|tell me about|explain)\b/i.test(q)&&!withData&&!greet;
  const c=curChat();const lastUser=c?c.msgs.filter(m=>m.role==='user').at(-1):null;const lastSys=c?c.msgs.filter(m=>m.role==='sys'&&m.text).at(-1):null;
+ if(isResearch){const r=await research(q);if(r){const checks=gradeAnswer(r.answer,r.facts);return {answer:r.answer,mouth:r.mouth,facts:r.facts,system:r.system,user:r.user,checks,err:null,mech:false};}}
  const isFollow=!withData&&!att.length&&/^(which one|what about|how about|tell me more|and him|and her|and them|more on|elaborate|expand)\b/i.test(q.trim())&&lastSys;
  const system=withData?(personaFor(q)+DATA_RULE):'You are a helpful assistant. Answer directly and concisely. Do not make up data or describe databases unless asked.';
  const user=withData?('DATA:\n'+facts.join('\n')+'\n\nQuestion: '+q):(isFollow?'Previous answer: '+lastSys.text+'\n\nFollow-up question: '+q:q);
