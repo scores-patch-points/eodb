@@ -1172,11 +1172,11 @@ function evaAgainst(v,att){const steps=[];const tbs=wsTables(U.ws),fl=wsFiles(U.
  if(v.slot==='thing'){
   const w=t=>v.question.split(' ').includes(t);
   // search/list
-  if(w('list')||w('show')||w('what')){
+  if(w('list')||w('show')||w('what')&&(w('files')||w('tables')||w('docs')||w('notes')||w('all'))){
    if(w('file')){steps.push('listed '+fl.length+' files');return {filled:true,answer:fl.length?fl.map(f=>f.name+' ('+fmtSize(f.size)+')').join('\n'):'No files yet.',steps};}
    if(w('table')){steps.push('listed '+tbs.length+' tables');return {filled:true,answer:tbs.length?tbs.map(t=>t.name+' ('+t.r.length+' rows)').join('\n'):'No tables yet.',steps};}
    if(w('doc')||w('note')){steps.push('listed '+ds.length+' docs/notes');return {filled:true,answer:ds.length?ds.map(d=>d.title).join('\n'):'No docs or notes yet.',steps};}
-   steps.push('listed workspace overview');return {filled:true,answer:W().name+': '+tbs.length+' tables, '+fl.length+' files, '+ds.length+' docs/notes.',steps};
+   return null;
   }
   // search/find
   const searchWords=['search','find','look','locate'];const isSearch=searchWords.some(x=>w(x));
