@@ -148,10 +148,12 @@ export function chunkedCarrier(inner, { mtu = 200 } = {}) {
 
 // ---- file shares: a short, scoped, read-only link to one file -------------------------------------------
 // A file share is a bearer link to a single blob. It carries the file's OWN key (derived from the space key by
-// `deriveFileKeyHex`), never the space key, so a link opens exactly one file and reveals nothing else. The name
-// and type ride along because a file-share recipient has no access to the log that records them.
+// `deriveFileKeyHex`), never the space key, so a link opens exactly one file and reveals nothing else. It also
+// carries the object name the file is stored under on a route — that name is a per-space keyed hash (opaque to the
+// server), so the recipient fetches it without ever learning the space key. The human name and type ride along
+// because a file-share recipient has no access to the log that records them.
 //   Link layout: `eodb-file:1:<base64url>` over a compact binary body:
-//     kind(1)=file | routeLen(1)+route | hash(32) | key(32) | typeLen(1)+type | nameLen(2)+name
+//     kind(1)=file | routeLen(1)+route | blob(32) | hash(32) | key(32) | typeLen(1)+type | nameLen(2)+name
 const hex = (u) => [...u].map((b) => b.toString(16).padStart(2, '0')).join('');
 const unhex = (h) => Uint8Array.from(String(h).match(/../g) || [], (x) => parseInt(x, 16));
 const b64u = (u8) => { let s = ''; for (const b of u8) s += String.fromCharCode(b); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
@@ -164,22 +166,22 @@ export async function deriveFileKeyHex(spaceKeyHex, name) {
   return hex(bits);
 }
 
-/** build a short file-share link. `routes` are bare relay URLs (no `relay:` prefix); `hash`/`key` are 64 hex chars. */
-export function fileShareLink({ routes, hash, key, type = '', name = '' }) {
-  if (!Array.isArray(routes) || !routes.length || typeof hash !== 'string' || typeof key !== 'string') throw new PharosError('BAD_LINK', 'fileShareLink needs routes, hash and key');
-  const rb = te.encode(routes[0]), hb = unhex(hash), kb = unhex(key), tb = te.encode(type), nb = te.encode(name);
-  if (hb.length !== 32 || kb.length !== 32) throw new PharosError('BAD_LINK', 'hash and key must be 64 hex characters');
-  const out = new Uint8Array(1 + 1 + rb.length + 32 + 32 + 1 + tb.length + 2 + nb.length);
+/** build a short file-share link. `routes` are bare relay URLs; `blob`/`hash`/`key` are 64 hex chars (`blob` is the keyed object name, no `blob/` prefix). */
+export function fileShareLink({ routes, blob, hash, key, type = '', name = '' }) {
+  if (!Array.isArray(routes) || !routes.length || typeof blob !== 'string' || typeof hash !== 'string' || typeof key !== 'string') throw new PharosError('BAD_LINK', 'fileShareLink needs routes, blob, hash and key');
+  const rb = te.encode(routes[0]), bb = unhex(blob), hb = unhex(hash), kb = unhex(key), tb = te.encode(type), nb = te.encode(name);
+  if (bb.length !== 32 || hb.length !== 32 || kb.length !== 32) throw new PharosError('BAD_LINK', 'blob, hash and key must be 64 hex characters');
+  const out = new Uint8Array(1 + 1 + rb.length + 32 + 32 + 32 + 1 + tb.length + 2 + nb.length);
   let o = 0;
   out[o++] = 1;                                     // kind: file
   out[o++] = rb.length; out.set(rb, o); o += rb.length;
-  out.set(hb, o); o += 32; out.set(kb, o); o += 32;
+  out.set(bb, o); o += 32; out.set(hb, o); o += 32; out.set(kb, o); o += 32;
   out[o++] = tb.length; out.set(tb, o); o += tb.length;
   out[o++] = (nb.length >> 8) & 255; out[o++] = nb.length & 255; out.set(nb, o); o += nb.length;
   return `eodb-file:1:${b64u(out)}`;
 }
 
-/** decode a file-share link back to { routes, hash, key, type, name }. */
+/** decode a file-share link back to { routes, blob, hash, key, type, name }. */
 export function parseFileShare(link) {
   const m = /^eodb-file:1:([A-Za-z0-9_-]+)$/.exec(String(link).trim());
   if (!m) throw new PharosError('BAD_LINK', 'not a file-share link');
@@ -187,20 +189,21 @@ export function parseFileShare(link) {
   const fail = () => { throw new PharosError('BAD_LINK', 'not a file-share link (incomplete)'); };
   let o = 0;
   if (b.length < 3 || b[o++] !== 1) fail();
-  const rl = b[o++]; if (b.length < o + rl + 32 + 32) fail(); const route = new TextDecoder().decode(b.subarray(o, o + rl)); o += rl;
+  const rl = b[o++]; if (b.length < o + rl + 32 + 32 + 32) fail(); const route = new TextDecoder().decode(b.subarray(o, o + rl)); o += rl;
+  const blob = hex(b.subarray(o, o + 32)); o += 32;
   const hash = hex(b.subarray(o, o + 32)); o += 32;
   const key = hex(b.subarray(o, o + 32)); o += 32;
   if (b.length < o + 1) fail(); const tl = b[o++]; const type = new TextDecoder().decode(b.subarray(o, o + tl)); o += tl;
   if (b.length < o + 2) fail(); const nl = (b[o] << 8) | b[o + 1]; o += 2; const name = new TextDecoder().decode(b.subarray(o, o + nl)); o += nl;
-  if (!route || !/^[0-9a-f]{64}$/.test(hash) || !/^[0-9a-f]{64}$/.test(key)) fail();
-  return { routes: [route], hash, key, type, name };
+  if (!route || !/^[0-9a-f]{64}$/.test(blob) || !/^[0-9a-f]{64}$/.test(hash) || !/^[0-9a-f]{64}$/.test(key)) fail();
+  return { routes: [route], blob, hash, key, type, name };
 }
 
-/** open a shared file with nothing but its link: fetch, decrypt with the file key, and check the bytes hash to their name. */
+/** open a shared file with nothing but its link: fetch by its keyed object name, decrypt with the file key, and check the bytes hash to their fingerprint. */
 export async function fetchSharedFile(link) {
   const s = parseFileShare(link);
   const carrier = sealedCarrier(httpCarrier(s.routes[0]), await importKey(s.key), { aad: 'eodb-file/1' });
-  const raw = await carrier.get(`blob/${s.hash}`);
+  const raw = await carrier.get(`blob/${s.blob}`);
   if (!raw) throw new PharosError('NO_FILE', 'the shared file is not reachable (relay down, or the sharer has not synced it)');
   const tl = raw[0], bytes = raw.slice(1 + tl);
   if (hex(sha256(bytes)) !== s.hash) throw new PharosError('BAD_FILE', 'file bytes do not match their fingerprint');

@@ -28,9 +28,10 @@ test('1. a file key is deterministic, domain-separated, and one-way', async () =
 });
 
 test('2. the file-share link is short and round-trips', () => {
-  const link = N.fileShareLink({ routes: ['http://127.0.0.1:8853'], hash: 'ab'.repeat(32), key: 'cd'.repeat(32), type: 'text/csv', name: 'metro-contracts.csv' });
-  assert.ok(link.length < 200, `link should be short, got ${link.length}: ${link}`);
-  assert.deepEqual(N.parseFileShare(link), { routes: ['http://127.0.0.1:8853'], hash: 'ab'.repeat(32), key: 'cd'.repeat(32), type: 'text/csv', name: 'metro-contracts.csv' });
+  const blob = 'ef'.repeat(32);
+  const link = N.fileShareLink({ routes: ['http://127.0.0.1:8853'], blob, hash: 'ab'.repeat(32), key: 'cd'.repeat(32), type: 'text/csv', name: 'metro-contracts.csv' });
+  assert.ok(link.length < 300, `link should be short, got ${link.length}: ${link}`);
+  assert.deepEqual(N.parseFileShare(link), { routes: ['http://127.0.0.1:8853'], blob, hash: 'ab'.repeat(32), key: 'cd'.repeat(32), type: 'text/csv', name: 'metro-contracts.csv' });
   assert.throws(() => N.parseFileShare('nope'), /not a file-share link/);
   assert.throws(() => N.parseFileShare('eodb-file:1:@@@@'), /malformed|not a file-share link/);
 });
@@ -62,11 +63,13 @@ test('4. isolation: one link opens one file; it reveals neither the space key no
   const link1 = await A.shareFile(h1);
   const s1 = N.parseFileShare(link1);
 
-  // a recipient who knows only link1 cannot read file2: rebuilding a link with file1's key and file2's hash fails
-  const forged = N.fileShareLink({ routes: s1.routes, hash: h2, key: s1.key, type: '', name: '' });
+  // a recipient who knows only link1 cannot read file2: file2's object name is a per-space keyed hash it cannot compute,
+  // and even given the name, file1's key cannot decrypt file2's blob.
+  assert.notEqual(s1.blob, (await A.blobName(h2)).slice(5), 'file objects have distinct keyed names');
+  const forged = N.fileShareLink({ routes: s1.routes, blob: (await A.blobName(h2)).slice(5), hash: h2, key: s1.key, type: '', name: '' });
   await assert.rejects(N.fetchSharedFile(forged), /not reachable|does not match/);
 
-  // file2 is reachable only with its own link (its own key)
+  // file2 is reachable only with its own link (its own name and key)
   const link2 = await A.shareFile(h2);
   assert.equal(new TextDecoder().decode((await N.fetchSharedFile(link2)).bytes), 'SECRET-FILE-TWO');
 
@@ -85,15 +88,15 @@ test('5. a wrong key cannot open the file, and wrong bytes under the real name a
   const s = N.parseFileShare(await A.shareFile(h));
 
   // a wrong key in the link cannot decrypt the blob
-  await assert.rejects(N.fetchSharedFile(N.fileShareLink({ routes: s.routes, hash: h, key: '00'.repeat(32), type: '', name: '' })), /not reachable|does not match/);
+  await assert.rejects(N.fetchSharedFile(N.fileShareLink({ routes: s.routes, blob: s.blob, hash: h, key: '00'.repeat(32), type: '', name: '' })), /not reachable|does not match/);
 
-  // a key-holder (a malicious member, who can derive the file key) serves valid ciphertext of the WRONG bytes under the real file's name;
+  // a key-holder (a malicious member, who can derive the file key) serves valid ciphertext of the WRONG bytes under the real object's name;
   // the content hash must refuse it. Simulated by overwriting the relay object directly, as a hostile relay would.
   const fake = new TextEncoder().encode('SUBSTITUTED'); const payload = new Uint8Array(1 + fake.length); payload.set(fake, 1);
   const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
-  const ct = new Uint8Array(await globalThis.crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(`eodb-file/1|blob/${h}`) }, await N.importKey(await N.deriveFileKeyHex(spaceKey, h)), payload));
+  const ct = new Uint8Array(await globalThis.crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(`eodb-file/1|blob/${s.blob}`) }, await N.importKey(await N.deriveFileKeyHex(spaceKey, h)), payload));
   const sealed = new Uint8Array(12 + ct.length); sealed.set(iv); sealed.set(ct, 12);
-  r.store.set(`blob/${h}`, Buffer.from(sealed));
+  r.store.set(`blob/${s.blob}`, Buffer.from(sealed));
 
   await assert.rejects(N.fetchSharedFile(await A.shareFile(h)), /not match/);
 });

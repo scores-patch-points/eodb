@@ -152,18 +152,29 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
     for (const uri of uris) { const scheme = uri.split(':')[0]; const make = rawAdapters[scheme]; if (!make) continue; try { const raw = make(uri); out.push({ uri, raw, carrier: track(uri, key ? N.sealedCarrier(raw, key) : raw) }); } catch (e) { routeHealth.set(uri, { ok: false, error: String(e.message || e), at: Date.now() }); } }
     return out;
   }
-  // file contents travel as sealed objects named blob/<sha256>, each sealed under ITS OWN file key (derived from the space key), so a file-share
-  // recipient who holds only that file's key can read exactly that blob. A received one is accepted only if its bytes hash to its name.
+  // File contents travel as sealed objects. Their NAMES are a keyed hash of the file's hash (blob/<hmac>), per space: two spaces on one server never
+  // collide, and the server cannot tell which file an object is or whether two spaces hold the same one. Each object is sealed under ITS OWN file key
+  // (derived from the space key), so a file-share recipient who holds only that file's key can read exactly that blob. A received object is accepted
+  // only if its bytes hash to the file hash we expected.
+  let nameKey = null;
+  const blobName = async (hash) => {
+    if (!nameKey) { const raw = core.sha256(new TextEncoder().encode(`eodb-blob-name/1|${await spaceKeyHexOf()}`)); nameKey = await globalThis.crypto.subtle.importKey('raw', raw, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']); }
+    return 'blob/' + hex(new Uint8Array(await globalThis.crypto.subtle.sign('HMAC', nameKey, new TextEncoder().encode(`blob|${hash}`))));
+  };
+  const referencedHashes = () => { const out = new Set(); const walk = (v) => { if (typeof v === 'string') { if (/^[0-9a-f]{64}$/.test(v)) out.add(v); } else if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v === 'object' && !(v instanceof Uint8Array)) Object.values(v).forEach(walk); }; for (const e of space.view()) if (e.op === 'file+' || e.op === 'read' || e.op === 'voice+') walk(e.body); return out; };
   async function syncBlobs(raw) {
     const b = blobApiRef; if (!b) return 0; let moved = 0;
     const keyHex = await spaceKeyHexOf(); if (!keyHex) return 0;
     const names = new Set((await raw.list()).filter((n) => /^blob\/[0-9a-f]{64}$/.test(n)));
-    for (const [hash, v] of b.all()) if (!names.has(`blob/${hash}`)) {
+    for (const [hash, v] of b.all()) {
+      const n = await blobName(hash); if (names.has(n)) continue;
       const c = N.sealedCarrier(raw, await N.importKey(await N.deriveFileKeyHex(keyHex, hash)), { aad: 'eodb-file/1' });
       const t = te.encode(v.type || ''); const out = new Uint8Array(1 + t.length + v.bytes.length); out[0] = t.length; out.set(t, 1); out.set(v.bytes, 1 + t.length);
-      await c.putNew(`blob/${hash}`, out); moved++;
+      await c.putNew(n, out); moved++;
     }
-    for (const n of names) { const hash = n.slice(5); if (b.has(hash)) continue;
+    for (const hash of referencedHashes()) {
+      if (b.has(hash)) continue;
+      const n = await blobName(hash); if (!names.has(n)) continue;
       const c = N.sealedCarrier(raw, await N.importKey(await N.deriveFileKeyHex(keyHex, hash)), { aad: 'eodb-file/1' });
       const rawBytes = await c.get(n); if (!rawBytes) continue;
       const tl = rawBytes[0], bytes = rawBytes.slice(1 + tl);
@@ -251,15 +262,17 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
     },
     /** stop admitting new devices through the link (devices already admitted stay until their grant is revoked) */
     async unshare() { if (!share || guest || !share.inviteEntry) return false; A.revoke(h, root, share.inviteEntry, 'share link revoked'); share.inviteEntry = null; await store.putSecret('share', te.encode(JSON.stringify(share))); signNow(); await syncOnce(); return true; },
+    /** the object name a file is stored under on routes (a keyed hash: opaque to the server, unique per space) */
+    blobName: (hash) => blobName(hash),
     /** share ONE file as a short, read-only link. It carries only that file's key, never the space key, so the recipient can read this file and nothing else. */
     async shareFile(hash, { name, routes: rs = [] } = {}) {
       if (guest) throw new core.PharosError('NOT_FOUNDER', 'only the device that made the space can share files');
       if (!share) throw new core.PharosError('NOT_SHARED', 'share the space first, then share files');
       const b = blobs.get(hash); if (!b) throw new core.PharosError('NO_FILE', 'no such file: add it to a workspace first');
       for (const r of rs) if (!share.routes.includes(r)) { share.routes.push(r); Loc.announce(h, { scope: 'space', uri: r }); }
-      await syncOnce();   // publish segments and blobs (each blob sealed under its own file key)
+      await syncOnce();   // publish segments and blobs (each blob sealed under its own file key, named by a per-space keyed hash)
       const nm = name || (space.view().find((e) => e.op === 'file+' && e.body && e.body.hash === hash) || {}).body?.name || hash.slice(0, 8);
-      return N.fileShareLink({ routes: share.routes.map((r) => r.replace(/^relay:/, '')), hash, key: await N.deriveFileKeyHex(await spaceKeyHexOf(), hash), type: b.type || '', name: nm });
+      return N.fileShareLink({ routes: share.routes.map((r) => r.replace(/^relay:/, '')), blob: (await blobName(hash)).slice(5), hash, key: await N.deriveFileKeyHex(await spaceKeyHexOf(), hash), type: b.type || '', name: nm });
     },
     syncOnce, get role() { return guest ? 'guest' : share ? 'founder' : 'solo'; },   // live: a solo space becomes a founder's the moment it is shared
     /** devices seen in the log (the writer id before the tab part) */
