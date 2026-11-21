@@ -1,0 +1,15 @@
+{
+  "name": "eodb",
+  "short_name": "eodb",
+  "description": "A local-first surface: ingest content, read it deterministically, build automations. No account needed.",
+  "start_url": "/eodb-clone/demo/landing/landing.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#17171a",
+  "theme_color": "#17171a",
+  "icons": [
+    { "src": "/eodb-clone/demo/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/eodb-clone/demo/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

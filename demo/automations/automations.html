@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>eodb · automations</title>
+<link rel="manifest" href="/eodb-clone/demo/manifest.webmanifest">
+<link rel="icon" type="image/png" href="/eodb-clone/demo/icons/icon-192.png">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem('eodb-theme');
+      if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {}
+  })();
+</script>
+<style>
+  :root{--bg:#17171a;--s1:#1c1c20;--s2:#29292e;--sel:#26272c;--line:#2e2e33;--line2:#3f3f46;--ink:#f4f4f6;--ink2:#c9c9d2;--mut:#9d9da8;--dim:#9494a0;--acc:#8ab4ff;--acc2:#6d9dff;--green:#56d364;--amber:#f0b429;--bad:#f87171;--r-sm:6px;--r-md:10px;--sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;--mono:ui-monospace,SFMono-Regular,Menlo,monospace;color-scheme:dark}
+  :root[data-theme="light"]{--bg:#ffffff;--s1:#ffffff;--s2:#f1f1f4;--sel:#eef0f4;--line:#e4e4e9;--line2:#cfcfd7;--ink:#141416;--ink2:#44444e;--mut:#5f5f6b;--dim:#666673;--acc:#1d4ed8;--acc2:#1a44c0;--green:#16793a;--amber:#a04a07;--bad:#c62828;color-scheme:light}
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--sans); height: 100vh; display: flex; flex-direction: column; }
+  ::selection { background: var(--acc); color: var(--bg); }
+  header { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+  .mark { width: 16px; height: 16px; border-radius: 4px; background: var(--acc2); }
+  .wordmark { font: 600 13px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+  .wordmark span { color: var(--mut); }
+  .status { margin-left: auto; font: 400 12px var(--mono); color: var(--mut); }
+  .actions { display: flex; gap: 6px; margin-left: 12px; }
+  button { font: 500 13px var(--sans); background: var(--s1); color: var(--ink); border: 1px solid var(--line2); border-radius: var(--r-sm); padding: 6px 12px; cursor: pointer; }
+  button:hover { border-color: var(--acc); }
+  button.primary { background: var(--acc2); border-color: var(--acc2); color: #fff; }
+  button.run { background: var(--green); border-color: var(--green); color: #062; font-weight: 600; }
+  .wrap { flex: 1; display: flex; min-height: 0; }
+  .palette { width: 190px; border-right: 1px solid var(--line); padding: 14px 12px; overflow: auto; }
+  .palette h3 { font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--mut); margin: 0 0 10px; }
+  .palette .p { padding: 9px 12px; border: 1px solid var(--line2); border-radius: var(--r-md); margin-bottom: 8px; cursor: grab; font-weight: 500; }
+  .palette .p:hover { border-color: var(--acc); background: var(--s2); }
+  .palette .p .d { display: block; font: 400 11.5px var(--mono); color: var(--dim); margin-top: 2px; }
+  .canvas { flex: 1; position: relative; overflow: auto; background:
+    linear-gradient(var(--line) 1px, transparent 1px) 0 0/24px 24px,
+    linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0/24px 24px, var(--bg); }
+  svg.edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+  .node { position: absolute; z-index: 2; width: 190px; background: var(--s1); border: 1px solid var(--line2); border-radius: var(--r-md); box-shadow: 0 4px 16px rgba(0,0,0,.35); }
+  .node.sel { border-color: var(--acc); }
+  .node .head { display: flex; align-items: center; gap: 6px; padding: 7px 10px; cursor: grab; border-bottom: 1px solid var(--line); }
+  .node .head .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); }
+  .node .head .t { font-weight: 600; flex: 1; }
+  .node .head .x { cursor: pointer; color: var(--dim); font: 400 13px var(--mono); }
+  .node .head .x:hover { color: var(--bad); }
+  .node .io { padding: 6px 0; }
+  .node .port { display: flex; align-items: center; gap: 6px; padding: 3px 10px; font: 400 12px var(--mono); color: var(--ink2); }
+  .node .port .p { width: 10px; height: 10px; border-radius: 50%; background: var(--dim); border: 2px solid var(--s1); cursor: crosshair; flex: none; }
+  .node .port.in { justify-content: flex-start; }
+  .node .port.in .p { margin-right: auto; }
+  .node .port.out { justify-content: flex-end; }
+  .node .port.out .p { background: var(--acc2); margin-left: auto; }
+  .node .port .p.hot { box-shadow: 0 0 0 3px var(--acc2); }
+  .node .field { padding: 4px 10px 10px; }
+  .node textarea, .node input { width: 100%; background: var(--s2); border: 1px solid var(--line2); border-radius: var(--r-sm); color: var(--ink); font: 400 12.5px var(--sans); padding: 6px 8px; resize: vertical; outline: none; }
+  .node .out-val { margin: 4px 10px 10px; padding: 6px 8px; background: var(--s2); border-radius: var(--r-sm); font: 400 11.5px var(--mono); color: var(--green); white-space: pre-wrap; max-height: 120px; overflow: auto; word-break: break-word; }
+  .saved { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .saved .w { padding: 5px 8px; border-radius: var(--r-sm); cursor: pointer; font: 400 12.5px var(--mono); color: var(--ink2); }
+  .saved .w:hover { background: var(--s2); color: var(--ink); }
+  .hintbar { padding: 8px 16px; border-top: 1px solid var(--line); font: 400 12px var(--mono); color: var(--dim); }
+</style>
+</head>
+<body>
+<header>
+  <div class="mark"></div>
+  <div class="wordmark">eodb <span>· automations</span></div>
+  <div class="actions">
+    <button class="run" id="run">▶ Run</button>
+    <button id="save">Save</button>
+    <button id="clear">Clear</button>
+  </div>
+  <span class="status" id="status">starting…</span>
+</header>
+
+<div class="wrap">
+  <aside class="palette">
+    <h3>Nodes</h3>
+    <div id="palette"></div>
+    <div class="saved">
+      <h3>Saved workflows</h3>
+      <div id="saved"></div>
+    </div>
+  </aside>
+  <div class="canvas" id="canvas">
+    <svg class="edges" id="edges"></svg>
+  </div>
+</div>
+<div class="hintbar">click an <span style="color:var(--acc)">output</span> port, then an <span style="color:var(--acc)">input</span> port to connect · drag a node header to move · run = deterministic, no model</div>
+
+<script type="module">
+import * as core from '../../../pharos-clone/lib/core.mjs';
+import * as B from '../../../pharos-clone/lib/browser-store.mjs';
+import { readDocument } from '../../../holodeck/holodeck-reader.js';   // cite the khora reader
+try { navigator.serviceWorker && navigator.serviceWorker.register('/eodb-clone/demo/sw.js', { scope: '/' }).catch(() => {}); } catch (e) {}
+
+const $ = (s) => document.querySelector(s);
+const state = { h: null, store: null };
+const nodes = [];      // { id, type, x, y, def, data }
+const edges = [];      // { from: nodeId, fromPort, to: nodeId, toPort }
+let connecting = null, nextId = 1;
+
+// ---- the deterministic operations (no model) ----
+const DEFS = {
+  text: { label: 'Text', inputs: [], outputs: ['text'], fields: [{ key: 'text', textarea: true, ph: 'paste or write…' }],
+    run: async (inp, node) => ({ text: node.data.text || '' }) },
+  read: { label: 'Read', inputs: ['text'], outputs: ['reading'],
+    run: async (inp) => { if (!inp.text) return { reading: null }; const W = await readDocument(inp.text); return { reading: W }; } },
+  referents: { label: 'Referents', inputs: ['reading'], outputs: ['names'],
+    run: async (inp) => { const W = inp.reading; return { names: (W && W.cast || []).map((c) => (c.surfaces || [c.id])[0]) }; } },
+  relations: { label: 'Relations', inputs: ['reading'], outputs: ['relations'],
+    run: async (inp) => { const W = inp.reading; return { relations: (W && W.edges || []).map((e) => `${e.end1} —${e.label}→ ${e.end2}${e.polarity === '-' ? ' (neg)' : ''}`) }; } },
+  store: { label: 'Store to log', inputs: ['value'], outputs: ['id'],
+    run: async (inp) => { const e = core.weave(state.h, { cell: 'INS·Figure', kind: 'result', addr: 'result:' + crypto.randomUUID(), body: { value: inp.value } }); await state.store.flush(); return { id: e.id }; } },
+};
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+
+// ---- node DOM ----
+function addNode(type, x, y, data = {}, id) {
+  const def = DEFS[type];
+  const n = { id: id || 'n' + (nextId++), type, x: x ?? 120, y: y ?? 120, def, data };
+  nodes.push(n);
+  const el = document.createElement('div');
+  el.className = 'node'; el.id = 'node-' + n.id;
+  el.style.left = n.x + 'px'; el.style.top = n.y + 'px';
+  const io = def.inputs.map((p) => `<div class="port in"><span class="p" data-node="${n.id}" data-port="${p}" data-dir="in"></span><span>${esc(p)}</span></div>`).join('')
+           + def.outputs.map((p) => `<div class="port out"><span>${esc(p)}</span><span class="p" data-node="${n.id}" data-port="${p}" data-dir="out"></span></div>`).join('');
+  const fields = (def.fields || []).map((f) => `<div class="field">${f.textarea ? `<textarea data-key="${f.key}" placeholder="${esc(f.ph || '')}">${esc(n.data[f.key] || '')}</textarea>` : `<input data-key="${f.key}" value="${esc(n.data[f.key] || '')}">`}</div>`).join('');
+  el.innerHTML = `<div class="head"><span class="dot"></span><span class="t">${esc(def.label)}</span><span class="x" title="remove">✕</span></div><div class="io">${io}</div>${fields}<div class="out-val hidden"></div>`;
+  $('#canvas').appendChild(el);
+  el.querySelector('.x').onclick = () => removeNode(n.id);
+  el.querySelector('.head').addEventListener('mousedown', (e) => startDrag(e, n, el));
+  el.querySelectorAll('textarea,input').forEach((f) => f.addEventListener('input', () => { n.data[f.dataset.key] = f.value; }));
+  el.querySelectorAll('.port .p').forEach((p) => p.addEventListener('mousedown', (e) => clickPort(e, p.dataset.node, p.dataset.port, p.dataset.dir)));
+  return n;
+}
+function removeNode(id) {
+  const i = nodes.findIndex((n) => n.id === id); if (i < 0) return;
+  nodes.splice(i, 1);
+  for (let e = edges.length - 1; e >= 0; e--) if (edges[e].from === id || edges[e].to === id) edges.splice(e, 1);
+  document.getElementById('node-' + id)?.remove(); redrawEdges();
+}
+
+// ---- drag ----
+let drag = null;
+function startDrag(e, n, el) {
+  drag = { n, el, sx: e.clientX, sy: e.clientY, ox: n.x, oy: n.y };
+  const mv = (ev) => { n.x = drag.ox + (ev.clientX - drag.sx); n.y = drag.oy + (ev.clientY - drag.sy); el.style.left = n.x + 'px'; el.style.top = n.y + 'px'; redrawEdges(); };
+  const up = () => { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); drag = null; };
+  window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up);
+}
+
+// ---- connect ports ----
+function clickPort(e, nodeId, port, dir) {
+  e.stopPropagation();
+  if (dir === 'out') {
+    connecting = { nodeId, port };
+    document.querySelectorAll('.port .p').forEach((p) => p.classList.toggle('hot', p.dataset.node === nodeId && p.dataset.port === port && p.dataset.dir === 'out'));
+  } else if (connecting) {
+    if (!edges.some((ed) => ed.from === connecting.nodeId && ed.fromPort === connecting.port && ed.to === nodeId && ed.toPort === port)) {
+      edges.push({ from: connecting.nodeId, fromPort: connecting.port, to: nodeId, toPort: port });
+    }
+    connecting = null; document.querySelectorAll('.port .p').forEach((p) => p.classList.remove('hot')); redrawEdges();
+  }
+}
+
+// ---- edges (SVG) ----
+function portCenter(nodeId, port, dir) {
+  const el = document.getElementById('node-' + nodeId); if (!el) return null;
+  const p = el.querySelector(`.p[data-port="${port}"][data-dir="${dir}"]`); if (!p) return null;
+  const r = p.getBoundingClientRect(), c = $('#canvas').getBoundingClientRect();
+  return { x: r.left - c.left + r.width / 2 + $('#canvas').scrollLeft, y: r.top - c.top + r.height / 2 + $('#canvas').scrollTop };
+}
+function redrawEdges() {
+  const svg = $('#edges'); svg.innerHTML = '';
+  for (const e of edges) {
+    const a = portCenter(e.from, e.fromPort, 'out'), b = portCenter(e.to, e.toPort, 'in');
+    if (!a || !b) continue;
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    const mx = (a.x + b.x) / 2;
+    line.setAttribute('d', `M ${a.x} ${a.y} C ${mx} ${a.y}, ${mx} ${b.y}, ${b.x} ${b.y}`);
+    line.setAttribute('stroke', 'var(--acc2)'); line.setAttribute('stroke-width', '2'); line.setAttribute('fill', 'none');
+    svg.appendChild(line);
+  }
+}
+
+// ---- runner: topo-sort + execute ----
+async function run() {
+  const incoming = {};   // nodeId -> { [inputIndex]: { nodeId, port } }
+  for (const e of edges) {
+    const tn = nodes.find((n) => n.id === e.to); if (!tn) continue;
+    const idx = tn.def.inputs.indexOf(e.toPort); if (idx < 0) continue;
+    (incoming[e.to] || (incoming[e.to] = {}))[idx] = { nodeId: e.from, port: e.fromPort };
+  }
+  const computed = {}, pending = new Set(nodes.map((n) => n.id));
+  while (pending.size) {
+    let progressed = false;
+    for (const id of [...pending]) {
+      const n = nodes.find((x) => x.id === id); if (!n) { pending.delete(id); continue; }
+      const inp = {}; let ready = true;
+      n.def.inputs.forEach((p, i) => {
+        const src = incoming[id] && incoming[id][i];
+        if (src && computed[src.nodeId] !== undefined) inp[p] = computed[src.nodeId][src.port];
+        else if (src) ready = false; else inp[p] = undefined;
+      });
+      if (!ready) continue;
+      const el = document.getElementById('node-' + id);
+      el.querySelector('.out-val').textContent = '…'; el.querySelector('.out-val').classList.remove('hidden');
+      try { computed[id] = await n.def.run(inp, n); }
+      catch (err) { computed[id] = { error: String(err.message || err) }; }
+      const ov = el.querySelector('.out-val');
+      ov.textContent = JSON.stringify(computed[id], null, 1); ov.style.color = computed[id].error ? 'var(--bad)' : 'var(--green)';
+      pending.delete(id); progressed = true;
+    }
+    if (!progressed) { for (const id of pending) { const el = document.getElementById('node-' + id); el.querySelector('.out-val').textContent = 'unresolved (cycle or missing input)'; el.querySelector('.out-val').classList.remove('hidden'); } break; }
+  }
+  $('#status').textContent = 'ran ' + nodes.length + ' nodes';
+}
+
+// ---- persistence: workflows are entries in the log ----
+async function save() {
+  const body = { name: 'workflow ' + new Date().toISOString().slice(0, 16).replace('T', ' '), nodes: nodes.map((n) => ({ id: n.id, type: n.type, x: n.x, y: n.y, data: n.data })), edges };
+  core.weave(state.h, { cell: 'INS·Figure', kind: 'workflow', addr: 'workflow:' + crypto.randomUUID(), body });
+  await state.store.flush(); renderSaved();
+}
+async function load(w) {
+  clearCanvas();
+  w.body.nodes.forEach((nd) => addNode(nd.type, nd.x, nd.y, nd.data, nd.id));
+  edges.push(...w.body.edges); redrawEdges();
+}
+function clearCanvas() { nodes.length = 0; edges.length = 0; $('#canvas').querySelectorAll('.node').forEach((n) => n.remove()); redrawEdges(); }
+
+function renderSaved() {
+  const ws = core.fold(state.h).entries.filter((e) => e.kind === 'workflow');
+  $('#saved').innerHTML = ws.map((w) => `<div class="w" data-id="${w.id}">${esc(w.body.name || w.addr)}</div>`).join('') || '<div style="color:var(--dim)">none saved</div>';
+  $('#saved').querySelectorAll('.w').forEach((el) => el.onclick = () => load(ws.find((w) => w.id === el.dataset.id)));
+}
+
+// ---- boot ----
+async function boot() {
+  core.configure({ cells: await (await fetch('../../../pharos-clone/cells.json')).json() });
+  const { backend, kind } = await B.autoBackend('eodb-automations');
+  const store = await B.openBrowserStore({ name: 'automations', backend });
+  state.store = store;
+  state.h = core.open('automations', { writer: 'dev-' + crypto.randomUUID().slice(0, 8), store });
+  for (const k of ['source', 'referent', 'bond', 'result', 'workflow']) if (!core.entries(state.h).some((e) => e.kind === 'kind' && e.body && e.body.name === k)) core.weave(state.h, { cell: 'DEF·Figure', kind: 'kind', addr: 'kind:' + k, body: { name: k, cell: k === 'bond' ? 'CON·Figure' : 'INS·Figure' } });
+  await store.flush();
+  $('#status').textContent = 'local · ' + kind + ' · no model';
+  renderSaved();
+}
+
+$('#palette').innerHTML = Object.entries(DEFS).map(([k, d]) => `<div class="p" data-type="${k}">${esc(d.label)}<span class="d">${esc(d.inputs.length ? 'in: ' + d.inputs.join(', ') : 'no input')}</span></div>`).join('');
+$('#palette').querySelectorAll('.p').forEach((el) => el.onclick = () => { const n = addNode(el.dataset.type); redrawEdges(); });
+$('#run').onclick = () => run().catch((e) => { $('#status').textContent = 'error: ' + e.message; });
+$('#save').onclick = () => save().catch((e) => $('#status').textContent = 'error: ' + e.message);
+$('#clear').onclick = () => clearCanvas();
+$('#canvas').addEventListener('scroll', redrawEdges);
+
+boot().catch((e) => { $('#status').textContent = 'failed: ' + e.message; });
+
+// starter: one text -> read -> referents, so it is not empty
+setTimeout(() => { if (!nodes.length) { const t = addNode('text', 60, 80); const r = addNode('read', 340, 80); const ref = addNode('referents', 620, 80); edges.push({ from: t.id, fromPort: 'text', to: r.id, toPort: 'text' }, { from: r.id, fromPort: 'reading', to: ref.id, toPort: 'reading' }); redrawEdges(); } }, 200);
+</script>
+</body>
+</html>

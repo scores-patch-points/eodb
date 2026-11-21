@@ -15,3 +15,8 @@ sources/*
 !sources/INDEX.tsv
 # local route settings (may contain a mailbox token): never commit
 app/config.js
+# mailbox runtime: the master key is a secret, objects are data — never commit
+app/mailbox/master.key
+app/mailbox/objects/
+# seeded demo log is data, not source
+demo/log/

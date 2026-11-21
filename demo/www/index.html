@@ -1,0 +1,102 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EODB — mini-site</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; background: #0f172a; color: #e2e8f0; }
+  header { padding: 20px 24px; border-bottom: 1px solid #1e293b; }
+  h1 { margin: 0; font-size: 20px; }
+  h1 span { color: #fbbf24; }
+  main { padding: 20px 24px; max-width: 1000px; }
+  section { margin-bottom: 28px; border: 1px solid #1e293b; border-radius: 8px; overflow: hidden; }
+  section > h2 { margin: 0; padding: 10px 14px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; background: #1e293b; color: #94a3b8; }
+  .body { padding: 14px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  input, select, textarea { font: inherit; background: #0b1220; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; padding: 7px 9px; }
+  input { flex: 1; min-width: 120px; }
+  textarea { width: 100%; min-height: 64px; resize: vertical; }
+  button { font: inherit; background: #fbbf24; color: #0f172a; border: 0; border-radius: 6px; padding: 7px 14px; cursor: pointer; font-weight: 600; }
+  button:hover { background: #fcd34d; }
+  pre { margin: 12px 0 0; padding: 12px; background: #0b1220; border: 1px solid #1e293b; border-radius: 6px; overflow: auto; font-size: 12.5px; white-space: pre-wrap; }
+  .tag { color: #fbbf24; }
+  .muted { color: #64748b; }
+</style>
+
+<header><h1>EODB <span>·</span> mini-site</h1><div class="muted">a view over a pharos log — say, ask, share, disclose</div></header>
+
+<main>
+  <section>
+    <h2>who</h2>
+    <div class="body">
+      <button onclick="get('/who', 'who-out')">load writers</button>
+      <pre id="who-out" class="muted">—</pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>catalog (SQL relations)</h2>
+    <div class="body">
+      <button onclick="get('/catalog', 'cat-out')">load catalog</button>
+      <pre id="cat-out" class="muted">—</pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>query</h2>
+    <div class="body">
+      <div class="row">
+        <select id="lang"><option value="eoql">eoql</option><option value="sql">sql</option></select>
+        <button onclick="runQuery()">run</button>
+      </div>
+      <textarea id="q" style="margin-top:8px">SEG(sources; kinds: ["contact"])</textarea>
+      <pre id="query-out" class="muted">—</pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>disclose (field-level)</h2>
+    <div class="body">
+      <div class="row">
+        <input id="d-reader" placeholder="reader" value="carol">
+        <input id="d-addr" placeholder="addr" value="contact:ana">
+        <button onclick="disclose()">disclose</button>
+      </div>
+      <pre id="disclose-out" class="muted">—</pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>permissions</h2>
+    <div class="body">
+      <div class="row">
+        <input id="p-reader" placeholder="reader" value="carol">
+        <button onclick="get('/permissions?reader=' + enc($('#p-reader').value), 'perm-out')">load</button>
+      </div>
+      <pre id="perm-out" class="muted">—</pre>
+    </div>
+  </section>
+</main>
+
+<script>
+  const $ = (s) => document.querySelector(s);
+  const enc = encodeURIComponent;
+  const show = (id, v) => { $(id).textContent = typeof v === 'string' ? v : JSON.stringify(v, null, 2); $(id).classList.remove('muted'); };
+  async function get(path, id) {
+    try { const r = await fetch(path); show(id, await r.json()); }
+    catch (e) { show(id, 'error: ' + e); }
+  }
+  async function runQuery() {
+    const lang = $('#lang').value, q = $('#q').value;
+    try {
+      const r = await fetch('/query', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ language: lang, query: q }) });
+      const j = await r.json();
+      show('query-out', j.card ? { card: j.card, rows: j.envelope.rows } : j);
+    } catch (e) { show('query-out', 'error: ' + e); }
+  }
+  async function disclose() {
+    const reader = $('#d-reader').value, addr = $('#d-addr').value;
+    get(`/disclose?reader=${enc(reader)}&addr=${enc(addr)}`, 'disclose-out');
+  }
+</script>
