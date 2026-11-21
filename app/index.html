@@ -1071,18 +1071,47 @@ function retrieve(q,att){const tbs=wsTables(U.ws),fl=wsFiles(U.ws),ds=wsDocs(U.w
  if(toks.length===0&&!(att&&att.length))return [];
  const cand=[],add=(sc,str)=>str&&cand.push({sc,str});
  for(const f of attachFacts(att))add(100,f);
+ // fold the files through their reading results (READS) — names, referents, relations, not raw bytes
+ for(const f of fl){
+  const rs=READS(f.hash);const r=rs.length?rs[rs.length-1]:null;
+  const isCsv=/csv/i.test(f.type)||/\.csv$/i.test(f.name);
+  // the fold's reading: tier, kind, facts (rows, columns, words, characters, etc.)
+  let str='file '+f.name+' ('+fmtSize(f.size)+', '+f.type+')';
+  if(r){str+=' \u2014 read as '+r.tier+' ('+r.kind+')';
+   const facts=r.facts||{};const parts=[];
+   if(facts.rows!=null)parts.push(facts.rows+' rows');
+   if(facts.columns)parts.push('columns: '+facts.columns);
+   if(facts.words)parts.push(facts.words+' words');
+   if(facts.characters)parts.push(facts.characters+' chars');
+   if(facts.shape)parts.push(facts.shape);
+   if(facts.keys)parts.push('keys: '+facts.keys.slice(0,8).join(', '));
+   if(facts.language)parts.push('language: '+facts.language);
+   if(parts.length)str+=' \u2014 '+parts.join(', ');
+   // names from the khora surf (folded names, not substrings)
+   if(KT&&r.textHash){const b=BLOBS.get(r.textHash);if(b){try{const tx=new TextDecoder().decode(b.bytes);const su=KT.extractSurfaces(KT.splitSentences(tx))||[];const names=su.map(x=>x.surface).filter(Boolean).slice(0,12);if(names.length)str+=' \u2014 names: '+names.join(', ');}catch(e){}}}
+   // CSV content (first rows) for grounding
+   if(isCsv){const sc2=srcOf(f.hash);if(sc2){str+='\n  ['+sc2.rows.length+' rows: '+sc2.cols.join(', ')+']';if(sc2.rows.length)str+='\n  '+sc2.rows.slice(0,5).map(r=>r.join(' | ')).join('\n  ');}}
+  }
+  const body=str;const sc=hit(f.name)+hit(body)+(isCsv?1:0);
+  if(sc>0||toks.length===0)add(sc||1,body);
+ }
+ // tables (already folded from log entries)
  for(const t of tbs){
   let str='table '+t.name+' ('+t.r.length+' rows): '+t.f.map(f=>f.n).join(', ');
   if(t.r.length&&t.r.length<=6){const rows=t.r.slice(0,6).map(r=>{const p=t.f.map(f=>{const v=r.v[f.id];return (v==null||v==='')?null:(f.n+'='+v);}).filter(Boolean);return p.length?('  '+p.join(' | ')):null;}).filter(Boolean);if(rows.length)str+='\n'+rows.join('\n');}
   const sc=hit(t.name)+hit(t.f.map(f=>f.n).join(' '))+hit(str);
-  if(sc>0)add(sc,str);
+  if(sc>0||toks.length===0)add(sc||1,str);
  }
- for(const f of fl){const isCsv=/csv/i.test(f.type)||/\.csv$/i.test(f.name);let cont='';if(isCsv){const sc2=srcOf(f.hash);if(sc2){cont=' ['+sc2.rows.length+' rows: '+sc2.cols.join(', ')+']';if(sc2.rows.length)cont+='\n  '+sc2.rows.slice(0,5).map(r=>r.join(' | ')).join('\n  ');}}const body='file '+f.name+' ('+fmtSize(f.size)+')'+cont;const sc=hit(f.name)+hit(body)+(isCsv?1:0);if(sc>0)add(sc,body);}
- for(const d of ds){const tx=blkText(d);const body=(d.kind==='note'?'note':'doc')+' "'+d.title+'": '+tx.slice(0,140);const sc=hit(d.title)+hit(tx);if(sc>0)add(sc,body);}
+ // docs/notes (already folded from log entries)
+ for(const d of ds){const tx=blkText(d);const body=(d.kind==='note'?'note':'doc')+' "'+d.title+'": '+tx.slice(0,140);
+  let names='';if(KT&&tx){try{const su=KT.extractSurfaces(KT.splitSentences(tx))||[];const ns=su.map(x=>x.surface).filter(Boolean).slice(0,8);if(ns.length)names=' (names: '+ns.join(', ')+')';}catch(e){}}
+  const body2=body+names;const sc=hit(d.title)+hit(tx);
+  if(sc>0||toks.length===0)add(sc||1,body2);
+ }
  cand.sort((a,b)=>b.sc-a.sc);
  let out=[],total=0;
  for(const c of cand){if(out.length>=6||total+c.str.length>1400)break;out.push(c.str);total+=c.str.length;}
- if(!out.length&&toks.length===0)out.push('workspace "'+W().name+'" has '+tbs.length+' tables, '+fl.length+' files, '+ds.length+' docs.');
+ if(!out.length)out.push('workspace "'+W().name+'" has '+tbs.length+' tables, '+fl.length+' files, '+ds.length+' docs.');
  return out;}
 function md(s){if(!s)return'';const codes=[];let t=String(s).replace(/```([\s\S]*?)```/g,(m,c)=>{codes.push(c);return '\u0000'+(codes.length-1)+'\u0000';});t=esc(t);
  t=t.replace(/`([^`]+)`/g,'<code>$1</code>');
