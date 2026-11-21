@@ -315,7 +315,10 @@ async function seed(){
  await T('t5',w3,'Notes',null,[{n:'Title',t:'text'},{n:'Body',t:'longtext'},{n:'Done',t:'checkbox'}]);
  D=fold();
  const fid=(tb,n)=>D.tb.find(t=>t.id===tb).f.find(f=>f.n===n).id;
- await appendQ('rows+',{tb:'t3',rows:[{id:uid('r'),v:{[fid('t3','Case number')]:'A-2201',[fid('t3','Vendor')]:'Motorola Solutions',[fid('t3','Stage')]:'Filed',[fid('t3','Hearing date')]:'2026-12-04',[fid('t3','Fee collected')]:1500}},{id:uid('r'),v:{[fid('t3','Case number')]:'A-2202',[fid('t3','Vendor')]:'Axon Enterprise Inc',[fid('t3','Stage')]:'Hearing',[fid('t3','Hearing date')]:'2027-01-18',[fid('t3','Fee collected')]:2500}},{id:uid('r'),v:{[fid('t3','Case number')]:'A-2203',[fid('t3','Vendor')]:'Flock Safety',[fid('t3','Stage')]:'Filed',[fid('t3','Hearing date')]:'2026-11-20',[fid('t3','Fee collected')]:800}},{id:uid('r'),v:{[fid('t3','Case number')]:'A-2204',[fid('t3','Vendor')]:'Motorola Solutions',[fid('t3','Stage')]:'Hearing',[fid('t3','Hearing date')]:'2027-02-10',[fid('t3','Fee collected')]:3200}}]});
+ const cnum=fid('t3','Case number'),cvend=fid('t3','Vendor'),cstage=fid('t3','Stage'),chear=fid('t3','Hearing date'),cfee=fid('t3','Fee collected');
+ await appendQ('rows+',{tb:'t3',rows:[{id:uid('r'),v:{[cnum]:'A-2201',[cvend]:'Motorola Solutions',[cstage]:'Filed',[chear]:'2026-12-04',[cfee]:1500}},{id:uid('r'),v:{[cnum]:'A-2202',[cvend]:'Axon Enterprise Inc',[cstage]:'Hearing',[chear]:'2027-01-18',[cfee]:2500}},{id:uid('r'),v:{[cnum]:'A-2203',[cvend]:'Flock Safety',[cstage]:'Filed',[chear]:'2026-11-20',[cfee]:800}},{id:uid('r'),v:{[cnum]:'A-2204',[cvend]:'Motorola Solutions',[cstage]:'Hearing',[chear]:'2027-02-10',[cfee]:3200}}]});
+ const csup=fid('t1','Supplier name'),camt=fid('t1','Award amount'),cdate=fid('t1','Award date'),cbuy=fid('t1','Buyer'),ccon=fid('t1','Contact'),cstat=fid('t1','Status');
+ await appendQ('rows+',{tb:'t1',rows:[{id:uid('r'),v:{[csup]:'Motorola Solutions',[camt]:2980500,[cdate]:'2026-05-02',[cbuy]:'Emergency Comm.',[ccon]:'S. Whitfield',[cstat]:'Active'}},{id:uid('r'),v:{[csup]:'Axon Enterprise Inc',[camt]:1240000,[cdate]:'2026-03-14',[cbuy]:'Police',[ccon]:'R. Delgado',[cstat]:'Active'}},{id:uid('r'),v:{[csup]:'Flock Safety',[camt]:312400,[cdate]:'2026-01-21',[cbuy]:'Police',[ccon]:'R. Delgado',[cstat]:'Active'}},{id:uid('r'),v:{[csup]:'CDW Government',[camt]:86250,[cdate]:'2026-06-30',[cbuy]:'Information Tech.',[ccon]:'T. Okafor',[cstat]:'Active'}}]});
  await appendQ('rows+',{tb:'t5',rows:[{id:uid('r'),v:{[fid('t5','Title')]:'Oracle HQ walkthrough',[fid('t5','Body')]:'Site visit notes',[fid('t5','Done')]:false}}]});
  SEED_HASH=await putBlob(enc.encode(SEED_CSV),'text/csv');
  await appendQ('file+',{ws:w1,hash:SEED_HASH,name:'metro-contracts.csv',size:enc.encode(SEED_CSV).length,type:'text/csv',at:'Nov 20'});
@@ -1187,7 +1190,7 @@ function evaAgainst(v,att){const steps=[];const tbs=wsTables(U.ws),fl=wsFiles(U.
   }
   // cross-reference
   const crossWords=['cross','cross-reference','compare','join','relate'];const isCross=crossWords.some(x=>w(x))||t.includes('cross')||t.includes('compare')||t.includes('join');
-  if(isCross){const cross=mechCross(q);if(cross)return cross;}
+  if(isCross){const cross=mechCross(v.question);if(cross)return cross;}
   // lookup
   const lookupWords=['what','tell','describe'];const isLookup=lookupWords.some(x=>w(x));
   if(isLookup){const term=v.anchor.join(' ');const toks=askToks(term);
@@ -1201,54 +1204,62 @@ function mechAnswer(q,att){const v=defVoid(q);const r=evaAgainst(v,att);if(r.fil
  // cross-reference: join tables on a shared field, aggregate, compare
  const cross=mechCross(q);if(cross)return cross;
  return null;}
-function mechCross(q){const t=String(q||'').trim().toLowerCase();const tbs=wsTables(U.ws);
- // identify tables mentioned in the question
+const CROSS_ALIAS={'supplier name':'vendor','vendor':'supplier name','name':'title','title':'name','person name':'vendor','contact':'vendor','buyer':'vendor','supplier':'vendor'};
+function mechCross(q){const t=String(q||'').trim().toLowerCase();const tbs=D.tb;
  const mentioned=tbs.filter(tb=>t.includes(tb.name.toLowerCase()));
  if(mentioned.length<2)return null;
- // find a shared field (by name) across the mentioned tables
  const fields=mentioned.map(tb=>tb.f);let shared=null;
+ // exact name match
  for(const f of fields[0]){if(fields.slice(1).every(fs=>fs.some(x=>x.n.toLowerCase()===f.n.toLowerCase()))){shared=f;break;}}
  if(!shared){
-  // try by standard term
+  // standard term match
   for(const f of fields[0]){if(f.m&&fields.slice(1).every(fs=>fs.some(x=>x.m===f.m))){shared=f;break;}}
  }
+ if(!shared){
+  // semantic alias match
+  for(const f of fields[0]){
+   const key=f.n.toLowerCase();
+   const alias=CROSS_ALIAS[key];
+   if(alias&&fields.slice(1).every(fs=>fs.some(x=>x.n.toLowerCase()===alias))){shared=f;break;}
+  }
+ }
+ if(!shared){
+  // substring match
+  for(const f of fields[0]){
+   const key=f.n.toLowerCase();
+   if(fields.slice(1).every(fs=>fs.some(x=>{const xn=x.n.toLowerCase();return xn.includes(key)||key.includes(xn);}))){
+    shared=f;break;}
+  }
+ }
  if(!shared)return {answer:'No shared field found between '+mentioned.map(t=>t.name).join(' and ')+'.',steps:['no join key'],mech:true};
- // build join: for each row in the first table, find matching rows in the others
+ const fieldIn=(tb,name)=>tb.f.find(f=>f.n.toLowerCase()===name.toLowerCase())||tb.f.find(f=>{const a=f.n.toLowerCase(),b=name.toLowerCase();return a.includes(b)||b.includes(a);});
+ const name0=shared.n, name1=CROSS_ALIAS[name0.toLowerCase()]||name0;
  const t0=mentioned[0],t1=mentioned[1];
- const rows0=t0.r,rows1=t1.r;
+ const f0=fieldIn(t0,name0), f1=fieldIn(t1,name1);
+ if(!f0||!f1)return {answer:'Could not find join field in both tables.',steps:['no join field'],mech:true};
  const results=[];
- for(const r0 of rows0){
-  const v0=r0.v[shared.id];const matches=rows1.filter(r1=>r1.v[shared.id]===v0);
+ for(const r0 of t0.r){
+  const v0=r0.v[f0.id];const matches=t1.r.filter(r1=>r1.v[f1.id]===v0);
   if(matches.length){
-   // aggregate: sum numeric fields
    const agg0={},agg1={};
-   for(const f of t0.f){const vals=rows0.filter(r=>r.v[shared.id]===v0).map(r=>Number(r.v[f.id])).filter(n=>!isNaN(n));if(vals.length)agg0[f.n]=vals.reduce((a,b)=>a+b,0);}
+   for(const f of t0.f){const vals=t0.r.filter(r=>r.v[f0.id]===v0).map(r=>Number(r.v[f.id])).filter(n=>!isNaN(n));if(vals.length)agg0[f.n]=vals.reduce((a,b)=>a+b,0);}
    for(const f of t1.f){const vals=matches.map(r=>Number(r.v[f.id])).filter(n=>!isNaN(n));if(vals.length)agg1[f.n]=vals.reduce((a,b)=>a+b,0);}
    results.push({key:v0,agg0,agg1,count:matches.length});
   }
  }
  if(!results.length)return {answer:'No matching rows found between '+t0.name+' and '+t1.name+' on "'+shared.n+'".',steps:['join on '+shared.n+' \u2192 0 matches'],mech:true};
- // build answer
  const lines=['Cross-reference: '+t0.name+' \u2194 '+t1.name+' (join on "'+shared.n+'")'];
  for(const res of results){
   const parts=[res.key+':'];
   for(const [k,v] of Object.entries(res.agg0))parts.push(t0.name+'.'+k+'='+v);
   for(const [k,v] of Object.entries(res.agg1))parts.push(t1.name+'.'+k+'='+v);
-  // ratio check
   const a0=Object.values(res.agg0).find(v=>typeof v==='number');const a1=Object.values(res.agg1).find(v=>typeof v==='number');
   if(a0&&a1&&a1>0){const ratio=a0/a1;if(ratio>2)parts.push('RATIO '+ratio.toFixed(1)+':1 \u2014 EXCEEDS 2:1');}
   lines.push(parts.join(' | '));
  }
- steps.push('joined '+t0.name+' \u2194 '+t1.name+' on "'+shared.n+'" \u2192 '+results.length+' match'+(results.length===1?'':'es'));
- return {answer:lines.join('\n'),steps,mech:true};}
-// DEF/EVA/REC: the instruction set is the void; the mouth's output is evaluated against it; violations re-ground.
-// DEF: declare the instruction void — what must hold about the answer.
-function defRules(q,withData){const toks=askToks(q);const rules=(window.PERSONA_RULES||[]).filter(ru=>(ru.tags||[]).includes('*')||(ru.tags||[]).some(t=>toks.includes(t)));
- const out=[];let total=0;for(const f of rules){const p=prosifyFact(f);if(total+p.length>600)break;out.push(p);total+=p.length;}
- const base='You are a warm, helpful assistant. '+out.join('; ')+'.';
- const dataRule=withData?' You also have the user\'s local data. If the question is about it, answer only from the DATA and cite the table or file; if it is not there, say so.':'';
- return base+dataRule;}
-// EVA: evaluate the mouth's output against the void. Returns {ok, violations}.
+ return {answer:lines.join('\n'),steps:['joined '+t0.name+' \u2194 '+t1.name+' on "'+shared.n+'" \u2192 '+results.length+' match'+(results.length===1?'':'es')],mech:true};}
+
+// EVA: evaluate the mouth's output against the void (instruction rules). Returns {ok, violations}.
 function evaRules(answer){const v=[];const t=String(answer||'');
  if(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}]/u.test(t))v.push('emoji');
  if(/^[-*]\s/m.test(t))v.push('bullet');
@@ -1256,29 +1267,23 @@ function evaRules(answer){const v=[];const t=String(answer||'');
  if(/genuinely|honestly|straightforward/i.test(t))v.push('banned-word');
  if(t.length>600)v.push('too-long');
  return {ok:v.length===0,violations:v};}
-// voice(): the mouth (model) is not the voice. The voice mechanically cleans what the mouth said.
-function voice(raw){if(!raw)return '';let t=String(raw);
- // strip emojis
- t=t.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F000}-\u{1F02F}\u{1F0A0}-\u{1F0FF}\u{1F100}-\u{1F1FF}\u{1F200}-\u{1F2FF}\u{1F300}-\u{1F5FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F910}-\u{1F96B}\u{1F980}-\u{1F9E0}]/gu,'');
- // strip markdown bullets
- t=t.replace(/^[-*]\s+/gm,'');
- // strip "as an AI" framing
- t=t.replace(/as an (AI|language model|assistant)[^\n]*[.!?]?\s*/gi,'');
- // strip leading "ANSWER:"
- t=t.replace(/^ANSWER:\s*/i,'');
- // admission: refuse repetition (prosify.js::admit — repeated sentences are refused, not kept)
- const seen=new Set();const lines=t.split(/(?<=[.!?])\s+/);const kept=[];
- for(const l of lines){const k=l.toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,60);if(k&&seen.has(k))continue;if(k)seen.add(k);kept.push(l);}
- t=kept.join(' ');
- // collapse multiple newlines
- t=t.replace(/\n{3,}/g,'\n\n');
- return t.trim();}
 // REC: re-ground the mouth's output — strip violations mechanically (the floor).
 function recRules(answer){let t=String(answer||'');
  t=t.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}]/gu,'');
  t=t.replace(/^[-*]\s+/gm,'');
  t=t.replace(/as an (AI|language model|assistant)[^\n]*[.!?]?\s*/gi,'');
  t=t.replace(/genuinely|honestly|straightforward/gi,'');
+ t=t.replace(/\n{3,}/g,'\n\n');
+ return t.trim();}
+// voice(): the mouth (model) is not the voice. The voice mechanically cleans what the mouth said.
+function voice(raw){if(!raw)return '';let t=String(raw);
+ t=t.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F000}-\u{1F02F}\u{1F0A0}-\u{1F0FF}\u{1F100}-\u{1F1FF}\u{1F200}-\u{1F2FF}\u{1F300}-\u{1F5FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F910}-\u{1F96B}\u{1F980}-\u{1F9E0}]/gu,'');
+ t=t.replace(/^[-*]\s+/gm,'');
+ t=t.replace(/as an (AI|language model|assistant)[^\n]*[.!?]?\s*/gi,'');
+ t=t.replace(/^ANSWER:\s*/i,'');
+ const seen=new Set();const lines=t.split(/(?<=[.!?])\s+/);const kept=[];
+ for(const l of lines){const k=l.toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,60);if(k&&seen.has(k))continue;if(k)seen.add(k);kept.push(l);}
+ t=kept.join(' ');
  t=t.replace(/\n{3,}/g,'\n\n');
  return t.trim();}
 async function ask(q,att,onChunk){const t=String(q||'').trim().toLowerCase();const greet=/^(hi|hello|hey|how are you|whats up|what's up|yo|sup|good (morning|afternoon|evening))\b/.test(t);
