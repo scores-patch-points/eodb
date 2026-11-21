@@ -1,5 +1,4 @@
-// Contact invites: mint a token, the invitee binds it to their key, and the inviter sees them arrive. Nothing uploads an address
-// book; the token is the capability, and only its holder (who received it over the contact channel) can bind.
+// Contact privacy: the identifier and label are local-only and never reach the shared log, so sharing the space leaks nothing.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -14,58 +13,68 @@ const cells = JSON.parse(fs.readFileSync(path.join(here, '..', 'vendor', 'pharos
 core.configure({ cells }); I.usePure();
 
 const setup = () => core.open('eodb', { writer: 'me', store: core.memoryStore() });
+const logBodies = (h) => JSON.stringify(core.entries(h).map((e) => e.body));
 
-test('1. invite -> bind -> the contact shows up with key and route', () => {
+test('1. an invite is local-only: nothing about the contact enters the log', async () => {
   const h = setup();
-  const { token, identifier } = contact.invite(h, { identifier: 'sam@example.com', label: 'Sam' });
+  const store = contact.memoryLocalStore();
+  const { token, identifier } = await contact.invite(store, { identifier: 'sam@example.com', label: 'Sam' });
+  assert.equal(core.entries(h).filter((e) => e.kind === 'contact').length, 0, 'invite weaves nothing');
+  assert.ok(!logBodies(h).includes('sam@example.com'), 'identifier is not in the log');
+  assert.ok(!logBodies(h).includes('Sam'), 'label is not in the log');
+});
+
+test('2. a bind publishes only { tokenHash, key, route, sig } — no contact info', async () => {
+  const h = setup();
+  const store = contact.memoryLocalStore();
+  const { token } = await contact.invite(store, { identifier: 'sam@example.com', label: 'Sam' });
   const k = I.generateKey();
-  contact.bind(h, k, { token, identifier: 'sam@example.com', route: 'relay:https://relay.example' });
-
-  const found = contact.contacts(h, { tokens: [token] });
-  assert.equal(found.length, 1);
-  assert.equal(found[0].identifier, 'sam@example.com');
-  assert.equal(found[0].key, k.pub);
-  assert.equal(found[0].route, 'relay:https://relay.example');
+  await contact.bind(h, k, { token, route: 'relay:https://relay.example' });
+  const bind = core.entries(h).find((e) => e.kind === 'contact');
+  assert.deepEqual(Object.keys(bind.body).sort(), ['key', 'route', 'sig', 'tokenHash'], 'only these four fields');
+  assert.ok(!logBodies(h).includes('sam@example.com'), 'identifier is not in the log');
+  assert.ok(!logBodies(h).includes('Sam'), 'label is not in the log');
 });
 
-test('2. the raw token never appears in the log, only its hash', () => {
+test('3. contacts joins the LOCAL invites with the log binds', async () => {
   const h = setup();
-  const { token } = contact.invite(h, { identifier: 'sam@example.com' });
-  const all = JSON.stringify(core.entries(h).map((e) => e.body));
-  assert.ok(!all.includes(token), 'raw token is not stored');
-  assert.match(all, /[0-9a-f]{64}/, 'a hash is stored instead');
-});
-
-test('3. someone who does not hold the token cannot make the contact show up', () => {
-  const h = setup();
-  const { token } = contact.invite(h, { identifier: 'sam@example.com' });
-  const attacker = I.generateKey();
-  // the attacker guesses a token (they saw the invite entry, which holds only a hash) and binds with the wrong raw token
-  contact.bind(h, attacker, { token: '00'.repeat(32), identifier: 'sam@example.com', route: 'relay:https://evil.example' });
-  assert.equal(contact.contacts(h, { tokens: [token] }).length, 0, 'a wrong-token binding is not matched');
-});
-
-test('4. the binding is self-authenticating: wrong token or a forged signature is refused', () => {
-  const h = setup();
-  const { token } = contact.invite(h, { identifier: 'sam@example.com' });
+  const store = contact.memoryLocalStore();
+  const { token } = await contact.invite(store, { identifier: 'sam@example.com', label: 'Sam' });
   const k = I.generateKey();
-  const e = contact.bind(h, k, { token, identifier: 'sam@example.com' });
-
-  assert.equal(contact.verifyBind(h, e, token).ok, true, 'correct token verifies');
-  assert.equal(contact.verifyBind(h, e, '11'.repeat(32)).ok, false, 'a different token is refused');
-  assert.equal(contact.verifyBind(h, { body: { ...e.body, sig: '00'.repeat(128) } }, token).ok, false, 'a forged signature is refused');
+  await contact.bind(h, k, { token, route: 'relay:https://relay.example' });
+  const found = await contact.contacts(h, store);
+  assert.deepEqual(found, [{ identifier: 'sam@example.com', label: 'Sam', key: k.pub, route: 'relay:https://relay.example' }]);
 });
 
-test('5. several invites: each shows up only after its own token is claimed', () => {
+test('4. sharing leaks nothing: the whole log a collaborator would sync holds no identifier or label', async () => {
   const h = setup();
-  const a = contact.invite(h, { identifier: 'a@x.com' });
-  const b = contact.invite(h, { identifier: 'b@x.com' });
-  const ka = I.generateKey(), kb = I.generateKey();
-  contact.bind(h, ka, { token: a.token, identifier: 'a@x.com' });
-  // b not yet claimed
-  const found = contact.contacts(h, { tokens: [a.token, b.token] });
-  assert.equal(found.length, 1, 'only the claimed one shows up');
-  assert.equal(found[0].identifier, 'a@x.com');
-  contact.bind(h, kb, { token: b.token, identifier: 'b@x.com' });
-  assert.equal(contact.contacts(h, { tokens: [a.token, b.token] }).length, 2, 'both show up once both claim');
+  const store = contact.memoryLocalStore();
+  const a = await contact.invite(store, { identifier: 'alice@x.com', label: 'Alice' });
+  const b = await contact.invite(store, { identifier: 'bob@x.com', label: 'Bob' });
+  await contact.bind(h, I.generateKey(), { token: a.token, route: 'relay:https://a.example' });
+
+  for (const needle of ['alice@x.com', 'bob@x.com', 'Alice', 'Bob']) assert.ok(!logBodies(h).includes(needle), `"${needle}" must never be in the shared log`);
+
+  assert.equal((await contact.contacts(h, store)).length, 1, 'only the claimed invite resolves');
+  await contact.bind(h, I.generateKey(), { token: b.token, route: 'relay:https://b.example' });
+  assert.equal((await contact.contacts(h, store)).length, 2, 'both resolve once both claim');
+});
+
+test('5. a holder of the wrong token cannot make a contact resolve', async () => {
+  const h = setup();
+  const store = contact.memoryLocalStore();
+  const { token } = await contact.invite(store, { identifier: 'sam@example.com' });
+  await contact.bind(h, I.generateKey(), { token: '00'.repeat(64), route: 'relay:https://evil.example' });
+  assert.equal((await contact.contacts(h, store)).length, 0, 'a wrong-token binding is not matched');
+});
+
+test('6. a forged signature is refused', async () => {
+  const h = setup();
+  const store = contact.memoryLocalStore();
+  const { token } = await contact.invite(store, { identifier: 'sam@example.com' });
+  const k = I.generateKey();
+  const e = await contact.bind(h, k, { token, route: 'relay:https://x.example' });
+  assert.equal(contact.verifyBind(h, e, token).ok, true);
+  assert.equal(contact.verifyBind(h, { body: { ...e.body, sig: '00'.repeat(128) } }, token).ok, false);
+  assert.equal(contact.verifyBind(h, e, '11'.repeat(64)).ok, false, 'a different token is refused');
 });
