@@ -23,7 +23,7 @@ export function materialize(entries) {
     switch (e.op) {
       case 'tb+': tables.set(b.id, { id: b.id, ws: b.ws, name: b.name, std: b.std || null, columns: [], rows: [] }); break;
       case 'fld+': { const t = table(); if (t && !t.columns.some((c) => c.id === b.id)) t.columns.push({ id: b.id, name: b.n, type: b.t || 'text', mapping: b.m || null, to: b.to || null }); break; }
-      case 'fld=': { const t = table(); const c = t && t.columns.find((x) => x.id === b.id); if (c && b.set) Object.assign(c, b.set); break; }
+      case 'fld=': { const t = table(); const c = t && t.columns.find((x) => x.id === b.id); if (c && b.set) { const s = b.set; if ('n' in s) c.name = s.n; if ('t' in s) c.type = s.t; if ('m' in s) c.mapping = s.m; if ('to' in s) c.to = s.to; } break; }
       case 'row+': { const t = table(); if (t && !t.rows.some((x) => x.id === b.id)) t.rows.push({ id: b.id, v: { ...b.v } }); break; }
       case 'rows+': { const t = table(); if (t) for (const r of b.rows || []) if (!t.rows.some((x) => x.id === r.id)) t.rows.push({ id: r.id, v: { ...r.v }, src: b.src || null }); break; }
       case 'cell=': { const t = table(); const r = t && t.rows.find((x) => x.id === b.rid); if (r) r.v[b.fid] = b.v; break; }

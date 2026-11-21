@@ -85,6 +85,18 @@ test('toSQLite emits DDL and INSERTs; toJSON emits portable tables', () => {
   assert.equal(j.tables.Contracts.columns.length, 3);
 });
 
+test('fld= schema edits (rename, retype) propagate to the materialized columns', () => {
+  const es = [
+    { id: 'a1', op: 'tb+', body: { id: 't1', ws: 'w1', name: 'T', std: null } },
+    { id: 'a2', op: 'fld+', body: { tb: 't1', id: 'f1', n: 'vendor', t: 'text' } },
+    { id: 'a3', op: 'fld+', body: { tb: 't1', id: 'f2', n: 'amount', t: 'number' } },
+    { id: 'a4', op: 'fld=', body: { tb: 't1', id: 'f1', set: { n: 'supplier' } } },
+    { id: 'a5', op: 'fld=', body: { tb: 't1', id: 'f2', set: { t: 'currency' } } },
+  ];
+  const t = materialize(es).tables.find((x) => x.id === 't1');
+  assert.deepEqual(t.columns.map((c) => [c.name, c.type]), [['supplier', 'text'], ['amount', 'currency']]);
+});
+
 test('structured query() takes the parsed form directly', () => {
   const db = materialize(entries);
   const r = query(db, { select: [{ column: 'vendor' }], from: [{ name: 'Contracts', alias: 'Contracts' }], where: { col: 'amount', op: '<', val: '500000', type: 'number' }, orderBy: [], limit: null, offset: 0 });
