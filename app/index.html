@@ -1387,8 +1387,8 @@ function voice(raw){if(!raw)return '';let t=String(raw);
  return t.trim();}
 // ---- web research (foldcode's researching capacity, toy version) ----
 // search the web (Wikipedia, direct, no proxy), fetch the article, read it, ground the answer in it
-async function webSearch(q){const r=await fetch('https://en.wikipedia.org/w/api.php?action=opensearch&search='+encodeURIComponent(q)+'&limit=5&namespace=0&format=json');const d=await r.json();return (d[1]||[]).map((t,i)=>({title:t,url:d[3][i]}));}
-async function fetchArticle(title){const r=await fetch('https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&titles='+encodeURIComponent(title)+'&format=json');const d=await r.json();const pages=d.query&&d.query.pages;const p=pages&&Object.values(pages)[0];return (p&&p.extract)||'';}
+async function webSearch(q){try{const r=await fetch('https://en.wikipedia.org/w/api.php?action=opensearch&search='+encodeURIComponent(q)+'&limit=5&namespace=0&format=json');const d=await r.json();return (d[1]||[]).map((t,i)=>({title:t,url:d[3][i]}));}catch(e){return[];}}
+async function fetchArticle(title){try{const r=await fetch('https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&titles='+encodeURIComponent(title)+'&format=json');const d=await r.json();const pages=d.query&&d.query.pages;const p=pages&&Object.values(pages)[0];return (p&&p.extract)||'';}catch(e){return'';}}
 async function research(q){
  const results=await webSearch(q);const ground=[];
  for(const res of results.slice(0,3)){const text=await fetchArticle(res.title);if(text.length>100){const snip=text.slice(0,800);ground.push('Wikipedia "'+res.title+'": '+snip);}}
@@ -1403,7 +1403,7 @@ async function ask(q,att,onChunk){const t=String(q||'').trim().toLowerCase();con
  if(!(att&&att.length)&&greet){return {answer:'Doing well \u2014 what can I help you with?',facts:[],system:personaFor(q),user:q,checks:[],mech:true};}
  const mech=mechAnswer(q,att);if(mech){return {answer:mech.answer,facts:[],system:'(mechanical \u2014 no model)',user:q,checks:[{s:mech.steps.join(' \u2192 '),standing:'supported'}],mech:true};}
  const facts=retrieve(q,att);const withData=facts.length>0||(att&&att.length>0);
- const isResearch=/\b(research|look up|find out|what is|who is|tell me about|explain)\b/i.test(q)&&!withData&&!greet;
+ const isMath=/\d/.test(q)&&/[+\-*/=]/.test(q);const isResearch=/\b(research|look up|find out|explain)\b/i.test(q)&&!withData&&!greet&&!isMath;
  const c=curChat();const lastUser=c?c.msgs.filter(m=>m.role==='user').at(-1):null;const lastSys=c?c.msgs.filter(m=>m.role==='sys'&&m.text).at(-1):null;
  if(isResearch){const r=await research(q);if(r){const checks=gradeAnswer(r.answer,r.facts);return {answer:r.answer,mouth:r.mouth,facts:r.facts,system:r.system,user:r.user,checks,err:null,mech:false};}}
  const isFollow=!withData&&!att.length&&/^(which one|what about|how about|tell me more|and him|and her|and them|more on|elaborate|expand)\b/i.test(q.trim())&&lastSys;
