@@ -1277,12 +1277,19 @@ function evaAgainst(v,att){const steps=[];const tbs=wsTables(U.ws),fl=wsFiles(U.
  for(const d of ds)ground.push({type:'doc',name:d.title,kind:d.kind,text:blkText(d)});
  // SYN: synthesize the answer from the slot + connected ground
  if(v.slot==='quantity'){
-  const nums=ground.filter(g=>g.type==='table').flatMap(g=>g.rows.flatMap(r=>g.fields.map(f=>Number(r.v[f.id])).filter(n=>!isNaN(n))));
-  if(nums.length){const sum=nums.reduce((a,b)=>a+b,0);steps.push('summed '+nums.length+' values = '+sum);return {filled:true,answer:'Total: '+sum.toLocaleString()+' (over '+nums.length+' values).',steps};}
-  const tables=ground.filter(g=>g.type==='table');const files=ground.filter(g=>g.type==='file');
-  if(tables.length){steps.push('counted '+tables.length+' tables, '+tables.reduce((a,t)=>a+t.rows.length,0)+' rows');return {filled:true,answer:tables.length+' table'+(tables.length===1?'':'s')+', '+tables.reduce((a,t)=>a+t.rows.length,0)+' rows total.',steps};}
-  if(files.length){steps.push('counted '+files.length+' files');return {filled:true,answer:files.length+' file'+(files.length===1?'':'s')+'.',steps};}
-  const docs=ground.filter(g=>g.type==='doc');if(docs.length){steps.push('counted '+docs.length+' docs/notes');return {filled:true,answer:docs.length+' document'+(docs.length===1?'':'s')+' and notes.',steps};}
+  const hasRel=v.relation&&['sum','total','average','avg','mean'].includes(v.relation);
+  if(hasRel){
+   for(const tb of tbs){const toks=v.anchor;const fld=tb.f.find(f=>toks.some(x=>f.n.toLowerCase().includes(x)));if(fld){const vals=tb.r.map(r=>Number(r.v[fld.id])).filter(n=>!isNaN(n));if(vals.length){const r=v.relation.startsWith('avg')||v.relation==='mean'?vals.reduce((a,b)=>a+b,0)/vals.length:vals.reduce((a,b)=>a+b,0);steps.push((v.relation.startsWith('avg')||v.relation==='mean'?'averaged':'summed')+' '+fld.n+' = '+r+' over '+vals.length+' rows');return {filled:true,answer:(v.relation.startsWith('avg')||v.relation==='mean'?'Average':'Total')+' '+fld.n+': '+r.toLocaleString()+' (over '+vals.length+' rows).',steps};}}}
+  }
+  // count: what is being counted?
+  const anchor=v.anchor.join(' ');
+  if(anchor.includes('file')){steps.push('counted '+fl.length+' files');return {filled:true,answer:fl.length+' file'+(fl.length===1?'':'s')+'.',steps};}
+  if(anchor.includes('table')){steps.push('counted '+tbs.length+' tables');return {filled:true,answer:tbs.length+' table'+(tbs.length===1?'':'s')+'.',steps};}
+  if(anchor.includes('doc')||anchor.includes('note')){const n=ds.length;steps.push('counted '+n+' docs/notes');return {filled:true,answer:n+' document'+(n===1?'':'s')+' and notes.',steps};}
+  // default: count rows in the named table
+  for(const tb of tbs){if(v.anchor.some(a=>tb.name.toLowerCase().includes(a))){steps.push('counted '+tb.r.length+' rows');return {filled:true,answer:tb.r.length+' row'+(tb.r.length===1?'':'s')+' in '+tb.name+'.',steps};}}
+  // fallback: count all rows
+  const totalRows=tbs.reduce((a,t)=>a+t.r.length,0);steps.push('counted '+totalRows+' rows across '+tbs.length+' tables');return {filled:true,answer:totalRows+' rows across '+tbs.length+' tables.',steps};
  }
  if(v.slot==='thing'){
   // list: if the question asks to list/show, return what's there
