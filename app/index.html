@@ -170,8 +170,18 @@ td input{font:inherit;padding:2px 6px;border:1px solid var(--acc);border-radius:
 .ck.supported{color:var(--acc)}.ck.partial{color:var(--warn)}.ck.unsupported{color:var(--bad)}
 .catts{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
 .welcome{text-align:center;color:var(--mut);padding:40px 10px}
-.cinput{display:flex;gap:8px;align-items:flex-end;padding:12px 16px 32px;max-width:760px;width:100%}
-.cinput input{flex:1}
+.cinput{display:flex;flex-direction:column;gap:8px;padding:12px 16px 32px;max-width:760px;width:100%}
+.composer{display:flex;align-items:flex-end;gap:2px;background:var(--card);border:1px solid var(--line2);border-radius:22px;padding:5px;box-shadow:0 4px 16px rgba(0,0,0,.05)}
+.composer:focus-within{border-color:var(--acc);box-shadow:0 4px 16px rgba(0,0,0,.05),0 0 0 3px var(--accbg)}
+.composer textarea{flex:1;background:none;border:0;outline:none;resize:none;font:inherit;font-size:15px;line-height:1.45;padding:7px 10px;min-height:22px;max-height:200px;overflow-y:auto}
+.cicon{width:34px;height:34px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;border:0;cursor:pointer;flex:none;color:var(--mut);background:none}
+.cicon svg{width:18px;height:18px;fill:currentColor}
+.cicon:hover{background:var(--s2);color:var(--ink)}
+.csend{background:var(--line2);color:#fff}
+.csend:hover{background:var(--acc)}
+.csend.on{background:var(--acc)}
+.csend[disabled]{opacity:.45;cursor:default}
+.csend[disabled]:hover{background:var(--line2)}
 </style><style id="auto-css">
 .au-canvas{position:relative;overflow:auto;border:1px solid var(--line);border-radius:12px;background:linear-gradient(90deg,#fbfaf7 1px,transparent 1px)0 0/24px 24px,linear-gradient(#fbfaf7 1px,transparent 1px)0 0/24px 24px,#fff;min-height:360px}
 .au-node{position:absolute;z-index:2;width:184px;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.08)}
@@ -1189,7 +1199,7 @@ function evaAgainst(v,att){const steps=[];const tbs=wsTables(U.ws),fl=wsFiles(U.
    return {filled:true,answer:hits.length?hits.join('\n'):'No matches for "'+term+'".',steps};
   }
   // cross-reference
-  const crossWords=['cross','cross-reference','compare','join','relate'];const isCross=crossWords.some(x=>w(x))||t.includes('cross')||t.includes('compare')||t.includes('join');
+  const crossWords=['cross','cross-reference','compare','join','relate'];const isCross=crossWords.some(x=>w(x))||v.question.includes('cross')||v.question.includes('compare')||v.question.includes('join');
   if(isCross){const cross=mechCross(v.question);if(cross)return cross;}
   // lookup
   const lookupWords=['what','tell','describe'];const isLookup=lookupWords.some(x=>w(x));
@@ -1292,7 +1302,7 @@ async function ask(q,att,onChunk){const t=String(q||'').trim().toLowerCase();con
  const facts=retrieve(q,att);const withData=facts.length>0||(att&&att.length>0);
  const c=curChat();const lastUser=c?c.msgs.filter(m=>m.role==='user').at(-1):null;const lastSys=c?c.msgs.filter(m=>m.role==='sys'&&m.text).at(-1):null;
  const isFollow=!withData&&!att.length&&/^(which one|what about|how about|tell me more|and him|and her|and them|more on|elaborate|expand)\b/i.test(q.trim())&&lastSys;
- const system=defRules(q,withData);
+ const system=withData?defRules(q,true):'You are a helpful assistant. Answer directly and concisely. Do not make up data or describe databases unless asked.';
  const user=withData?('DATA:\n'+facts.join('\n')+'\n\nQuestion: '+q):(isFollow?'Previous answer: '+lastSys.text+'\n\nFollow-up question: '+q:q);
  // DEF the void: declare the instruction void (done above in defRules)
  let answer=null,err=null,mouth=null,recCount=0;
@@ -1307,9 +1317,11 @@ function vChat(){const c=curChat();
  const msgs=c?c.msgs.map(m=>'<div class="cmsg '+(m.role==='user'?'cu':'cs')+'"><div class="cbody">'+(m.att&&m.att.length?'<div class="catts">'+m.att.map(a=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+'</span>').join('')+'</div>':'')+(m.pending?'<span class="think">thinking\u2026</span>':md(m.text))+(m.system?'<details class="cground"><summary>prompt</summary><pre class="cp">'+esc('system: '+m.system+'\n\nuser: '+m.user)+'</pre></details>':'')+(m.checks&&m.checks.length?'<details class="cground"><summary>checked (Murch pace + fold falsify)</summary>'+m.checks.map(x=>'<div class="ck '+x.standing+'">'+(x.standing==='supported'?'\u2713':x.standing==='partial'?'~':'\u26a0')+' '+esc(x.s)+'</div>').join('')+'</details>':'')+(m.facts&&m.facts.length?'<details class="cground"><summary>thinking ('+m.facts.length+')</summary>'+esc(m.facts.join('\n')).replace(/\n/g,'<br>')+'</details>':'')+'</div></div>').join(''):'';
  const welcome='<div class="welcome"><div class="bmark">'+ic('chat-circle-text')+'</div><h2>Ask anything</h2><p class="note">A general assistant that can also answer about your files, tables and notes. Every reply is grounded and checked before it is spoken.</p></div>';
  const attrow=U.att.length?'<div class="catts">'+U.att.map((a,i)=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+' <button class="xd" onclick="detach('+i+')">'+ic('x')+'</button></span>').join('')+'</div>':'';
- const input='<div class="cinput">'+attrow+'<input id="cq" type="text" placeholder="Ask anything\u2026" onkeydown="if(event.key===\'Enter\')askSend()"><button class="b" title="Attach" onclick="pickAttach()">'+ic('paperclip')+'</button><button class="b p" onclick="askSend()">Send</button></div>';
+  const input='<div class="cinput">'+(attrow?'<div>'+attrow+'</div>':'')+'<div class="composer"><button class="cicon" title="Attach" aria-label="Attach" onclick="pickAttach()">'+ic('paperclip')+'</button><textarea id="cq" rows="1" placeholder="Ask anything\u2026" onkeydown="cqKey(event)" oninput="cqGrow(this)"></textarea><button class="cicon csend" id="csend" title="Send" aria-label="Send" disabled onclick="askSend()">'+ic('arrow-right')+'</button></div></div>';
  return h+'<div class="cmsgs">'+(c&&c.msgs.length?msgs:welcome)+'</div>'+input;}
-async function askSend(){const el=document.getElementById('cq');const q=(el&&el.value||'').trim();if(!q)return;el.value='';const long=/^(longform|write|report):/i.test(q);const q0=q.replace(/^(longform|write|report):\s*/i,'');let c=curChat();if(!c){c={id:uid('c'),title:q.slice(0,40),msgs:[]};U.chats.unshift(c);U.chatId=c.id;}
+function cqGrow(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,200)+'px';const b=document.getElementById('csend');if(b){const on=!!(el.value.trim());b.disabled=!on;b.classList.toggle('on',on);}}
+function cqKey(e){if(e.key==='Enter'&&!e.shiftKey){if(e.isComposing||e.keyCode===229)return;e.preventDefault();askSend();}}
+async function askSend(){const el=document.getElementById('cq');const q=(el&&el.value||'').trim();if(!q)return;el.value='';cqGrow(el);const long=/^(longform|write|report):/i.test(q);const q0=q.replace(/^(longform|write|report):\s*/i,'');let c=curChat();if(!c){c={id:uid('c'),title:q.slice(0,40),msgs:[]};U.chats.unshift(c);U.chatId=c.id;}
  const att=U.att.slice();U.att=[];
  c.msgs.push({role:'user',text:q,att});
  c.msgs.push({role:'sys',text:'',pending:true});
