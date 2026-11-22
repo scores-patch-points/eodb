@@ -1340,11 +1340,13 @@ function pickAttach(){const fl=wsFiles(U.ws),tbs=wsTables(U.ws),ds=wsDocs(U.ws);
  +'<div class="gt">TABLES</div>'+(tbs.map(t=>'<div class="res" onclick="attachTable(\''+t.id+'\');closeM()">'+ic('table')+' '+esc(t.name)+'</div>').join('')||'<p class="note">No tables</p>')
  +'<div class="gt">DOCS &amp; NOTES</div>'+(ds.map(d=>'<div class="res" onclick="attachDoc(\''+d.id+'\');closeM()">'+ic(d.kind==='note'?'note-pencil':'file-text')+' '+esc(d.title)+'</div>').join('')||'<p class="note">No docs</p>');
  document.getElementById('modal').classList.add('on');}
+function fileText(hash){const rs=READS(hash);for(let i=rs.length-1;i>=0;i--){const r=rs[i];if(r.textHash){const b=BLOBS.get(r.textHash);if(b){try{return new TextDecoder().decode(b.bytes);}catch(e){}}}}return null;}
 function attachFacts(att){const out=[];
  for(const a of att||[]){
   if(a.kind==='file'){const f=wsFiles(U.ws).find(x=>x.hash===a.id);const b=f&&BLOBS.get(a.id);if(!f)continue;let s='file '+f.name+' ('+fmtSize(f.size)+')';
    if(/csv/i.test(f.type)||/\.csv$/i.test(f.name)){const sc=srcOf(a.id);if(sc)s+='\n  cols: '+sc.cols.join(', ')+'\n  '+sc.rows.slice(0,8).map(r=>r.join(' | ')).join('\n  ');}
    else if(b&&/text/i.test(f.type)){try{s+='\n  '+new TextDecoder().decode(b.bytes).slice(0,600);}catch(e){}}
+   else {const tx=fileText(a.id);if(tx)s+='\n  '+tx.slice(0,900);}
    out.push(s);}
   else if(a.kind==='table'){const t=TB(a.id);if(t){let s='table '+t.name+' ('+t.r.length+' rows): '+t.f.map(f=>f.n).join(', ');const rows=t.r.slice(0,10).map(r=>t.f.map(f=>{const v=r.v[f.id];return v==null||v===''?'':(f.n+'='+v);}).filter(Boolean).join(' | ')).filter(Boolean);if(rows.length)s+='\n  '+rows.join('\n  ');out.push(s);}}
   else if(a.kind==='doc'){const d=D.docs.find(x=>x.id===a.id);if(d)out.push('doc "'+d.title+'": '+blkText(d).slice(0,500));}
