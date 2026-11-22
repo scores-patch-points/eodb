@@ -13,9 +13,11 @@ export const NODE_TYPES = {
   text: { label: 'Text', in: [], out: ['text'], fields: [['text', 'textarea', 'paste or write…']] },
   http: {
     label: 'HTTP request', in: ['body', 'headers'], out: ['status', 'json', 'body', 'headers'],
-    fields: [['url', 'text', 'https://api.example.com/…'], ['method', 'select', 'GET', ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']], ['headers', 'textarea', '{"Accept":"application/json"}'], ['auth', 'text', 'Bearer <token> or user:pass']],
+    fields: [['url', 'text', 'https://api.example.com/…'], ['method', 'select', 'GET', ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']], ['headers', 'textarea', '{"Accept":"application/json"}'], ['auth', 'text', 'Bearer <token> or user:pass'], ['body', 'textarea', '']],
   },
   rss: { label: 'RSS / Atom feed', in: ['url'], out: ['items', 'title', 'description'], fields: [['url', 'text', 'https://example.com/feed.xml']] },
+  ics: { label: 'Calendar (.ics URL)', in: ['url'], out: ['events', 'title'], fields: [['url', 'text', 'https://calendar.google.com/…/basic.ics']] },
+  email: { label: 'Email (IMAP/SMTP)', in: ['to', 'subject', 'body'], out: ['messages', 'sent'], fields: [['action', 'select', 'fetch', ['fetch', 'send']], ['server', 'text', 'http://127.0.0.1:8852'], ['folder', 'text', 'INBOX'], ['limit', 'text', '20'], ['to', 'text', 'you@example.com'], ['subject', 'text', ''], ['body', 'textarea', '']] },
   file: { label: 'File (URL or path)', in: ['url', 'bytes'], out: ['bytes', 'name', 'type'], fields: [['url', 'text', 'https://… or ./data.csv'], ['path', 'text', 'local path (headless)']] },
   json: { label: 'Parse JSON', in: ['text'], out: ['data'], fields: [['text', 'textarea', 'or wire text in']] },
   transform: { label: 'Transform rows', in: ['data'], out: ['rows', 'columns'], fields: [['op', 'select', 'flatten', ['flatten', 'pick', 'filter', 'rename']], ['arg', 'text', 'columns/keys to pick, or col=value']] },
@@ -96,6 +98,51 @@ export function parseRss(xml) {
   return { title, description, items };
 }
 
+// ---- iCalendar (.ics) -----------------------------------------------------------------------------------------
+// RFC 5545 folded lines are unfolded first (a line beginning with space/tab continues the previous). VEVENT blocks
+// become rows; the property value carries its params (`DTSTART;VALUE=DATE:...` -> we keep the value, not the params).
+function unfoldIcs(text) {
+  return String(text || '').replace(/\r\n[ \t]/g, '').replace(/\r/g, '');
+}
+const icsProp = (block, name) => {
+  const re = new RegExp('^' + name + '(?:;[^:\\r\\n]*)?:([^\\r\\n]*)$', 'm');
+  const m = block.match(re);
+  return m ? m[1].replace(/\\n/g, ' ').replace(/\\,/g, ',').replace(/\\\\/g, '\\').trim() : '';
+};
+export function parseIcs(text) {
+  const t = unfoldIcs(text);
+  const cal = t.match(/X-WR-CALNAME[^:\r\n]*:([^\r\n]+)/) || t.match(/NAME:([^\r\n]+)/);
+  const title = cal ? cal[1].trim() : '';
+  const events = [];
+  const re = /BEGIN:VEVENT([\s\S]*?)END:VEVENT/g;
+  let m;
+  while ((m = re.exec(t))) {
+    const e = {
+      summary: icsProp(m[1], 'SUMMARY'),
+      start: icsProp(m[1], 'DTSTART'),
+      end: icsProp(m[1], 'DTEND') || icsProp(m[1], 'DUE'),
+      location: icsProp(m[1], 'LOCATION'),
+      description: icsProp(m[1], 'DESCRIPTION'),
+      uid: icsProp(m[1], 'UID'),
+    };
+    if (e.summary || e.start) events.push(e);
+  }
+  return { title, events };
+}
+
+// ---- connector catalog: mainstream apps as pre-filled nodes (Tier 0/1/2 — no OAuth) -------------------------
+// Each entry is a starting node. `quick: 'url'` means it is a one-click ingest (the host builds rss/ics -> store).
+export const CONNECTORS = [
+  { id: 'rss', label: 'RSS / Atom feed', note: 'blog, Substack, podcast, YouTube, GitHub releases', quick: 'url', node: { type: 'rss', fields: {} } },
+  { id: 'ics', label: 'Calendar (.ics URL)', note: 'Google / Outlook private calendar link', quick: 'url', node: { type: 'ics', fields: {} } },
+  { id: 'notion', label: 'Notion', note: 'internal integration secret', node: { type: 'http', fields: { method: 'POST', url: 'https://api.notion.com/v1/search', headers: '{"Notion-Version":"2022-06-28","Content-Type":"application/json"}', auth: 'Bearer <integration-secret>', body: '{}' } } },
+  { id: 'airtable', label: 'Airtable', note: 'personal access token', node: { type: 'http', fields: { method: 'GET', url: 'https://api.airtable.com/v0/<baseId>/<tableId>', headers: '', auth: 'Bearer <personal-access-token>' } } },
+  { id: 'github', label: 'GitHub', note: 'fine-grained PAT', node: { type: 'http', fields: { method: 'GET', url: 'https://api.github.com/repos/<owner>/<repo>/issues', headers: '{"Accept":"application/vnd.github+json"}', auth: 'Bearer <pat>' } } },
+  { id: 'todoist', label: 'Todoist', note: 'API token', node: { type: 'http', fields: { method: 'GET', url: 'https://api.todoist.com/rest/v2/tasks', headers: '', auth: 'Bearer <api-token>' } } },
+  { id: 'weather', label: 'Weather (Open-Meteo)', note: 'no key needed', node: { type: 'http', fields: { method: 'GET', url: 'https://api.open-meteo.com/v1/forecast?latitude=40.7&longitude=-74.0&current_weather=true', headers: '', auth: '' } } },
+  { id: 'email', label: 'Email (IMAP/SMTP)', note: 'app password, server holds the secret', node: { type: 'email', fields: { action: 'fetch' } } },
+];
+
 // ---- header parsing for the http node --------------------------------------------------------------------------
 function parseHeaders(raw, auth) {
   const h = {};
@@ -127,6 +174,28 @@ const RUNNERS = {
     const text = await (ctx.fetch || fetch)(url).then((r) => r.text());
     const { title, description, items } = parseRss(text);
     return { items, title, description };
+  },
+  ics: async ({ fields, inputs, ctx }) => {
+    const url = inputs.url || fields.url || '';
+    const text = await (ctx.fetch || fetch)(url).then((r) => r.text());
+    const { title, events } = parseIcs(text);
+    return { events, title };
+  },
+  email: async ({ fields, inputs, ctx }) => {
+    const server = String(fields.server || 'http://127.0.0.1:8852').replace(/\/+$/, '');
+    const action = fields.action || 'fetch';
+    if (action === 'send') {
+      const payload = { to: inputs.to || fields.to, subject: inputs.subject || fields.subject, body: inputs.body || fields.body };
+      const r = await (ctx.fetch || fetch)(server + '/mail/send', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!r.ok) throw new Error('mail send ' + r.status + (await r.text().catch(() => '')));
+      const j = await r.json().catch(() => ({}));
+      return { sent: j.sent ?? true };
+    }
+    const q = '?folder=' + encodeURIComponent(fields.folder || 'INBOX') + '&limit=' + encodeURIComponent(fields.limit || '20');
+    const r = await (ctx.fetch || fetch)(server + '/mail/fetch' + q);
+    if (!r.ok) throw new Error('mail fetch ' + r.status + (await r.text().catch(() => '')));
+    const j = await r.json();
+    return { messages: j.messages || [] };
   },
   file: async ({ fields, inputs, ctx }) => {
     let bytes, name = '', type = '';

@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildExtension } from '../extension/package.mjs';
+import { smtpSend, imapFetch } from './mail.mjs';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const MAX = 8 * 1024 * 1024;
@@ -19,6 +20,14 @@ let extensionZip = null;
 const OC_URL = process.env.EODB_OPENCODE_URL || 'http://127.0.0.1:4096';
 const OC_USER = process.env.EODB_OPENCODE_USERNAME || 'opencode';
 const OC_PASS = process.env.EODB_OPENCODE_PASSWORD || '';
+// email: the server holds the app password; the browser only ever names "fetch" or "send".
+const MAIL = {
+  host: process.env.EODB_MAIL_HOST || 'smtp.gmail.com',
+  imapHost: process.env.EODB_MAIL_IMAP_HOST || 'imap.gmail.com',
+  user: process.env.EODB_MAIL_USER || '',
+  pass: process.env.EODB_MAIL_PASS || '',
+  from: process.env.EODB_MAIL_FROM || process.env.EODB_MAIL_USER || '',
+};
 const CORS = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'GET, PUT, OPTIONS',
@@ -41,11 +50,35 @@ function proxyOc(req, res, target) {
   req.pipe(preq);
 }
 
+/** /mail/send + /mail/fetch: the server's own email bridge (app-password auth lives in env, never in the browser). */
+function mail(req, res, u) {
+  if (!MAIL.user || !MAIL.pass) return send(res, 503, 'email not configured (set EODB_MAIL_USER / EODB_MAIL_PASS)', 'application/json');
+  if (u.pathname === '/mail/fetch' && req.method === 'GET') {
+    const folder = (u.searchParams.get('folder') || 'INBOX');
+    const limit = Number(u.searchParams.get('limit') || '20');
+    return imapFetch({ host: MAIL.imapHost, user: MAIL.user, pass: MAIL.pass, folder, limit })
+      .then((messages) => send(res, 200, JSON.stringify({ messages }), 'application/json'))
+      .catch((e) => send(res, 502, JSON.stringify({ error: String(e && e.message || e) }), 'application/json'));
+  }
+  if (u.pathname === '/mail/send' && req.method === 'POST') {
+    const chunks = []; req.on('data', (c) => chunks.push(c)); req.on('end', () => {
+      let p = {}; try { p = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); } catch { /* bad json */ }
+      if (!p.to || (!p.subject && !p.body)) return send(res, 400, JSON.stringify({ error: 'need to, subject/body' }), 'application/json');
+      smtpSend({ host: MAIL.host, user: MAIL.user, pass: MAIL.pass, from: MAIL.from, to: p.to, subject: p.subject, body: p.body })
+        .then((r) => send(res, 200, JSON.stringify({ sent: r.accepted }), 'application/json'))
+        .catch((e) => send(res, 502, JSON.stringify({ error: String(e && e.message || e) }), 'application/json'));
+    });
+    return;
+  }
+  return send(res, 405, JSON.stringify({ error: 'method' }), 'application/json');
+}
+
 const server = http.createServer((req, res) => {
   if (req.method === 'OPTIONS') return send(res, 204, '');
   const u = new URL(req.url, 'http://x');
   if (u.pathname === '/health') return send(res, 200, 'ok');
   if (u.pathname.startsWith('/oc/')) return proxyOc(req, res, OC_URL.replace(/\/+$/, '') + u.pathname.slice(3) + u.search);
+  if (u.pathname === '/mail/send' || u.pathname === '/mail/fetch') return mail(req, res, u);
   if (u.pathname === '/extension.zip') {   // build + serve the downloadable extension, once
     if (!extensionZip) { const r = buildExtension(path.join(dir, '..', 'extension', 'dist')); extensionZip = fs.readFileSync(r.file); }
     res.writeHead(200, { ...CORS, 'content-type': 'application/zip', 'content-length': extensionZip.length, 'content-disposition': 'attachment; filename="eodb-extension.zip"' });
