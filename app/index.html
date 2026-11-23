@@ -232,8 +232,10 @@ td input{font:inherit;padding:2px 6px;border:1px solid var(--acc);border-radius:
 .au-node .h{display:flex;align-items:center;gap:7px;padding:7px 10px;cursor:grab;border-bottom:1px solid var(--line);font-weight:600}
 .au-node .h .x{margin-left:auto;cursor:pointer;color:var(--mut);font-size:13px}
 .au-node .h .x:hover{color:var(--bad)}
-.au-node .p{display:flex;align-items:center;gap:6px;padding:3px 10px;font-size:12px;font-family:ui-monospace,Menlo,monospace;color:var(--mut)}
-.au-node .p .d{width:10px;height:10px;border-radius:50%;background:var(--mut);cursor:crosshair;flex:none}
+.au-node .p{display:flex;align-items:center;gap:5px;padding:1px 8px;font-size:10.5px;font-family:ui-monospace,Menlo,monospace;color:var(--mut);min-height:13px}
+.au-node .p .pl{opacity:0;transition:opacity .15s;pointer-events:none;white-space:nowrap}
+.au-node:hover .p .pl,.au-node .p.conn .pl{opacity:.85}
+.au-node .p .d{width:8px;height:8px;border-radius:50%;background:var(--mut);cursor:crosshair;flex:none}
 .au-node .p.out .d{background:var(--acc);margin-left:auto}
 .au-node .p.in .d{margin-right:auto}
 .au-node .f{padding:3px 10px 8px}
@@ -490,17 +492,15 @@ function autoRemove(id){AUTO.nodes=AUTO.nodes.filter(n=>n.id!==id);AUTO.edges=AU
 function autoPortCenter(id,port,dir){const el=document.getElementById('au-'+id);if(!el)return null;const p=el.querySelector('.p.'+dir+'[data-port="'+port+'"] .d');if(!p)return null;const r=p.getBoundingClientRect(),c=el.parentNode.getBoundingClientRect();return{x:r.left-c.left+r.width/2+el.parentNode.scrollLeft,y:r.top-c.top+r.height/2+el.parentNode.scrollTop};}
 function autoEdges(){const svg=document.getElementById('au-svg');if(!svg)return;svg.innerHTML='';for(const e of AUTO.edges){const a=autoPortCenter(e.from,e.fromPort,'out'),b=autoPortCenter(e.to,e.toPort,'in');if(!a||!b)continue;const l=document.createElementNS('http://www.w3.org/2000/svg','path');const mx=(a.x+b.x)/2;l.setAttribute('d','M '+a.x+' '+a.y+' C '+mx+' '+a.y+', '+mx+' '+b.y+', '+b.x+' '+b.y);l.setAttribute('stroke','var(--acc)');l.setAttribute('stroke-width','2');l.setAttribute('fill','none');svg.appendChild(l);}}
 function drawAuto(){
- const D=autoDefs(),defs=Object.keys(D);
- let pal='<div class="au-pal">'+defs.map(t=>'<button class="b" onclick="autoAdd(\''+t+'\')">+ '+D[t].label+'</button>').join('')+'<span style="margin-left:auto"></span><button class="b p" onclick="autoRun()">\u25b6 Run</button><button class="b" onclick="autoSave()">Save</button><button class="b" onclick="autoClear()">Clear</button></div>';
+ const D=autoDefs();
  let canv='<div class="au-canvas" id="au-canvas" onscroll="autoEdges()"><svg class="au-svg" id="au-svg"></svg>';
  for(const n of AUTO.nodes){const d=D[n.type];if(!d)continue;
-  const ins=d.in.map(p=>'<div class="p in" data-port="'+p+'"><span class="d" data-node="'+n.id+'" data-port="'+p+'" data-dir="in"></span>'+esc(p)+'</div>').join('');
-  const outs=d.out.map(p=>'<div class="p out" data-port="'+p+'"><span>'+esc(p)+'</span><span class="d" data-node="'+n.id+'" data-port="'+p+'" data-dir="out"></span></div>').join('');
+  const ins=d.in.map(p=>'<div class="p in" data-port="'+p+'" title="'+esc(p)+'"><span class="d" data-node="'+n.id+'" data-port="'+p+'" data-dir="in"></span><span class="pl">'+esc(p)+'</span></div>').join('');
+  const outs=d.out.map(p=>'<div class="p out" data-port="'+p+'" title="'+esc(p)+'"><span class="pl">'+esc(p)+'</span><span class="d" data-node="'+n.id+'" data-port="'+p+'" data-dir="out"></span></div>').join('');
   const fs=(d.fields||[]).map(f=>'<div class="f">'+autoField(n,f)+'</div>').join('');
   canv+='<div class="au-node" id="au-'+n.id+'" style="left:'+n.x+'px;top:'+n.y+'px"><div class="h"><span class="dot"></span>'+esc(d.label)+'<span class="x" onclick="autoRemove(\''+n.id+'\')">\u2715</span></div><div>'+ins+outs+'</div>'+fs+'<div class="ov" id="au-out-'+n.id+'"></div></div>';
  }
  canv+='</div>';
- document.getElementById('auto-pal').innerHTML=pal;
  const c=document.getElementById('auto-canv'); c.innerHTML=canv;
  for(const n of AUTO.nodes){const el=document.getElementById('au-'+n.id);if(!el)continue;
   el.querySelector('.h').addEventListener('mousedown',(ev)=>{const sx=ev.clientX,sy=ev.clientY,ox=n.x,oy=n.y;const mv=(e)=>{n.x=ox+e.clientX-sx;n.y=oy+e.clientY-sy;el.style.left=n.x+'px';el.style.top=n.y+'px';autoEdges();};const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up);};window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up);});
@@ -520,9 +520,8 @@ async function autoRun(){
 function autoSave(){if(!AUTO.nodes.length)return;const name='automation '+(ENGINE.view().filter(e=>e.op==='auto+').length+1);ENGINE.append('auto+',{name,nodes:AUTO.nodes,edges:AUTO.edges});drawAuto();}
 function autoClear(){AUTO={nodes:[],edges:[],conn:null,n:1};drawAuto();}
 function autoLoad(w){AUTO={nodes:(w.body.nodes||[]).map(n=>({...n,fields:n.fields||{}})),edges:w.body.edges||[],conn:null,n:1+(w.body.nodes||[]).length};drawAuto();}
-function vAuto(){let h=crumb(ic('git-branch')+' Automations')+'<h1>Automations</h1><p class="sub">Connect nodes to drive other tools. An automation is saved as entries, so it re-runs under a better reader or model as new entries, never an overwrite.</p>'+connectPanel()+'<div id="auto-pal"></div><div id="auto-canv"></div>';
- const saved=ENGINE.view().filter(e=>e.op==='auto+');if(saved.length){h+='<div class="gt">Saved</div>'+saved.map(w=>'<span class="chip c-ok" style="cursor:pointer;margin:2px" onclick="autoLoad(ENGINE.view().find(e=>e.id===\''+w.id+'\'))">'+esc(w.body.name||w.id)+'</span>').join('');}
- return h;}
+function autoLoadById(id){const w=ENGINE.view().find(e=>e.id===id);if(w)autoLoad(w);}
+function vAuto(){return crumb(ic('git-branch')+' Automations')+'<h1>Automations</h1><p class="sub">Add nodes and connectors from the sidebar, wire their ports, then Run. Everything is a signed entry in the log.</p><div id="auto-canv"></div>';}
 /* ================= sql (the log as a conventional database) ================= */
 function vSql(){const R=window.Relational;const db=R.materialize(ENGINE.view());
  let h=crumb(ic('database')+' SQL')+'<h1>SQL</h1><p class="sub">The whole log folded into tables. Query it, or convert it to any database / file format.</p>';
@@ -622,6 +621,21 @@ function sideCrumb(){
  return '<div class="bcrumbs">'+segs.map((s,i)=>'<button class="bc'+(i===n-1?' on':'')+'"'+(s.go&&i<n-1?' onclick="'+s.go+'"':'')+'>'+esc(s.label)+'</button>').join('<span class="sep">'+ic('caret-right')+'</span>')+'</div>';
 }
 function side(){
+ if(U.sel==='auto'){
+  let h='<div class="brand">'+ic('git-branch')+'<div>Automations<small>nodes → graph → log</small></div></div>';
+  const C=(window.Automation&&window.Automation.CONNECTORS)||[];
+  if(C.length){h+='<div class="side-h">CONNECT</div>';for(const c of C)h+='<div class="it" title="'+esc(c.note)+'" onclick="'+(c.quick?'openFeedModal(\''+c.id+'\')':'autoAddPreset(\''+c.id+'\')')+'">'+ic(c.icon||iconForConn(c.id))+' '+esc(c.label)+'</div>';}
+  h+='<div class="side-h">ADD NODE</div>';
+  h+=Object.keys(autoDefs()).map(t=>'<div class="it" onclick="autoAdd(\''+t+'\')">'+ic('plus')+' '+autoDefs()[t].label+'</div>').join('');
+  h+='<div class="side-h">RUN</div>';
+  h+='<div style="padding:0 8px;display:flex;gap:6px"><button class="b p" style="flex:1;justify-content:center" onclick="autoRun()">'+ic('arrow-right')+' Run</button><button class="b" onclick="autoSave()">'+ic('check')+' Save</button><button class="b" onclick="autoClear()">'+ic('eraser')+' Clear</button></div>';
+  h+='<div class="side-h">SAVED</div>';
+  const saved=ENGINE.view().filter(e=>e.op==='auto+');
+  h+= saved.length? saved.slice().reverse().map(w=>'<div class="it" onclick="autoLoadById(\''+w.id+'\')">'+ic('git-branch')+' '+esc(w.body.name||w.id)+'</div>').join('') : '<div class="note" style="padding:0 8px">None yet.</div>';
+  h+='<div class="side-foot"><div class="it" onclick="U.sel=\'files\';render()">'+ic('hard-drives')+' Database</div></div>';
+  document.getElementById('side').innerHTML=h;
+  return;
+ }
  const onDoc=/^doc:/.test(U.sel);
  let h='<div class="brand">'+ic('hard-drives')+'<div>Spaces</div></div>';
  h+=sideCrumb();
