@@ -9,7 +9,12 @@
 
 const base = (config) => String(config.url || '').replace(/\/+$/, '');
 // A URL that starts with "/" is a same-origin proxy prefix (the app's server injects auth); otherwise send Basic auth ourselves.
-const auth = (config) => config.url && String(config.url).startsWith('/') ? {} : { Authorization: 'Basic ' + btoa((config.username || 'opencode') + ':' + (config.password || '')) };
+// ngrok-skip-browser-warning bypasses the free-tier interstitial page for XHR/fetch; harmless everywhere else.
+const auth = (config) => {
+  const h = { 'ngrok-skip-browser-warning': '1' };
+  if (!(config.url && String(config.url).startsWith('/'))) h.Authorization = 'Basic ' + btoa((config.username || 'opencode') + ':' + (config.password || ''));
+  return h;
+};
 
 async function j(r) {
   if (!r.ok) { let m = 'HTTP ' + r.status; try { const b = await r.json(); m = b.message || b.error || m; } catch { /* not json */ } throw new Error('opencode: ' + m); }
@@ -26,7 +31,7 @@ export async function getSession(config, sessionId) { const s = await j(await fe
 export async function pair(config) { return j(await fetch(base(config) + '/api/pair', { method: 'POST', headers: { ...auth(config), 'content-type': 'application/json' }, body: JSON.stringify({}) })); }
 
 /** redeem a pairing code (no auth — the code IS the credential). Returns { token }, used as the password. */
-export async function connect(config, code) { return j(await fetch(base(config) + '/auth/connect/' + encodeURIComponent(code), { headers: { accept: 'application/json' } })); }
+export async function connect(config, code) { return j(await fetch(base(config) + '/auth/connect/' + encodeURIComponent(code), { headers: { accept: 'application/json', 'ngrok-skip-browser-warning': '1' } })); }
 
 /** subscribe to the SSE event stream. onEvent(type, data). Returns an abort() function. */
 export function stream(config, onEvent, onError) {

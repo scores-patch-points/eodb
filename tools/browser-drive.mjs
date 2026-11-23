@@ -82,5 +82,10 @@ const out = await page.evaluate(({ table, query }) => ({
 }), recipe);
 
 console.log(JSON.stringify(out, null, 2));
-await browser.close();
-console.log('screenshots:', fs.readdirSync(shotDir).join(', '));
+if (has('keep') || !headless) {
+  console.log('browser left open — close the Chrome window when you are done.');
+  await new Promise(() => {});   // keep the process (and the visible browser) alive
+} else {
+  await browser.close();
+  console.log('screenshots:', fs.readdirSync(shotDir).join(', '));
+}

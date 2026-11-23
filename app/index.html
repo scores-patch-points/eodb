@@ -242,7 +242,7 @@ td input{font:inherit;padding:2px 6px;border:1px solid var(--acc);border-radius:
 .au-node .cb{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink2)}
 .au-node .cb input{width:auto}
 .au-node .ov{margin:2px 10px 8px;padding:5px 7px;background:var(--sel);border-radius:6px;font:11.5px/1.4 ui-monospace,Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:110px;overflow:auto}
-.au-svg{position:absolute;inset:0;pointer-events:none;z-index:1}
+.au-svg{position:absolute;top:0;left:0;pointer-events:none;z-index:1}
 .au-pal{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
 .net-canvas{position:relative;height:430px;overflow:auto;border:1px solid var(--line);border-radius:12px;background:radial-gradient(circle at 50% 50%,#f3f1ea 0%,#faf9f6 70%)}
 .net-svg{position:absolute;left:0;top:0}
@@ -449,29 +449,39 @@ function autoField(n,f){const k=f[0],kind=f[1]||'text',ph=f[2]||'',opts=f[3]||[]
  return '<input data-k="'+k+'" value="'+esc(v)+'" placeholder="'+esc(ph)+'">';}
 function autoAdd(t){const n={id:'a'+(AUTO.n++),type:t,x:40,y:40+30*AUTO.nodes.length,fields:{}};AUTO.nodes.push(n);drawAuto();}
 function autoAddPreset(id){const c=(window.Automation&&window.Automation.CONNECTORS||[]).find(x=>x.id===id);if(!c)return;const n={id:'a'+(AUTO.n++),type:c.node.type,x:40+30*AUTO.nodes.length,y:40+30*AUTO.nodes.length,fields:{...(c.node.fields||{})}};AUTO.nodes.push(n);drawAuto();}
-/* one-click ingest: a connector with `quick:'url'` runs rss/ics -> store immediately and lands a table. */
-async function quickConnect(id){const c=(window.Automation&&window.Automation.CONNECTORS||[]).find(x=>x.id===id);if(!c||!c.quick)return;
- const url=(document.getElementById('qc-url')||{}).value||'';const u=String(url).trim();if(!u){alert('Paste a '+(id==='ics'?'calendar .ics':'feed')+' URL first.');return;}
- const box=document.getElementById('qc-res');if(box){box.textContent='connecting…';box.style.color='var(--mut)';}
+/* add a feed/calendar from a URL — a real modal, not an inline input. */
+function openFeedModal(id){const isIcs=id==='ics';
+ document.getElementById('sheet').innerHTML=
+  '<div class="fh"><h2>'+(isIcs?'Add a calendar feed':'Add an RSS / Atom feed')+'</h2><button class="b g" style="margin-left:auto" onclick="closeM()">'+ic('x')+'</button></div>'+
+  '<p class="note">Paste the URL. It is fetched now and landed as a table — each change a signed entry in the log.</p>'+
+  '<div class="field"><label class="note">URL</label><input id="feedurl" placeholder="https://…" onkeydown="if(event.key===\'Enter\')feedLand(\''+id+'\')"></div>'+
+  '<div class="field"><label class="note">Table name</label><input id="feedname" placeholder="'+(isIcs?'Calendar':'Feed')+'"></div>'+
+  '<div id="feedres" class="note" style="min-height:16px;margin-bottom:8px"></div>'+
+  '<button class="b p" onclick="feedLand(\''+id+'\')">'+ic('download-simple')+' Fetch &amp; land</button>';
+ document.getElementById('modal').classList.add('on');focusId('feedurl');}
+async function feedLand(id){const u=String((document.getElementById('feedurl')||{}).value||'').trim();const nm=String((document.getElementById('feedname')||{}).value||'').trim();
+ const res=document.getElementById('feedres');
+ if(!u){if(res){res.textContent='Paste a URL first.';res.style.color='var(--bad)';}return;}
+ if(res){res.textContent='fetching…';res.style.color='var(--mut)';}
+ const isIcs=id==='ics';
+ const graph={name:'quick '+id,nodes:[
+  {id:'s',type:id,fields:{url:u}},
+  {id:'t',type:'transform',fields:{op:'pick',arg:isIcs?'summary,start,end,location':'title,link,date'}},
+  {id:'k',type:'store',fields:{name:nm||(isIcs?'Calendar':'Feed'),ws:U.ws}},
+ ],edges:[{from:'s',fromPort:isIcs?'events':'items',to:'t',toPort:'data'},{from:'t',fromPort:'rows',to:'k',toPort:'rows'}]};
  try{
-  const src={id:'s',type:id,fields:{url:u}};
-  const outPort=id==='ics'?'events':'items';
-  const graph={name:'quick '+id,nodes:[src,{id:'t',type:'transform',fields:{op:'pick',arg:id==='ics'?'summary,start,end,location':'title,link,date'}},{id:'k',type:'store',fields:{name:null,ws:U.ws}}],edges:[{from:'s',fromPort:outPort,to:'t',toPort:'data'},{from:'t',fromPort:'rows',to:'k',toPort:'rows'}]};
-  const res=await ENGINE.runAutomation(graph,{fetch:fetch});
-  const store=res.results&&res.results.k;const tid=store&&store.output&&store.output.tableId;
-  if(tid){if(box){box.textContent='landed in table '+tid+'. Opening…';box.style.color='var(--acc)';}D=fold();goTb(tid);}
-  else if(box){box.textContent='ran, but no table was landed ('+(store&&store.error||'?')+')';box.style.color='var(--bad)';}
- }catch(e){if(box){box.textContent='failed: '+(e&&e.message||e);box.style.color='var(--bad)';}}
+  const out=await ENGINE.runAutomation(graph,{fetch:fetch});
+  const k=out.results&&out.results.k;const tid=k&&k.output&&k.output.tableId;
+  refreshLog();D=fold();
+  if(tid){closeM();goTb(tid);}
+  else if(res){res.textContent='ran, but no table landed ('+(k&&k.error||'?')+')';res.style.color='var(--bad)';}
+ }catch(e){if(res){res.textContent='failed: '+(e&&e.message||e);res.style.color='var(--bad)';}}
 }
 function connectPanel(){const C=(window.Automation&&window.Automation.CONNECTORS)||[];
  if(!C.length)return '';
- let h='<div class="card" style="margin-bottom:12px"><div class="fh"><b>'+ic('plug')+' Connect</b><span class="note">Bring in a mainstream app — one click, or drop a pre-filled node into the canvas.</span></div>';
- h+='<div class="mini" style="margin:10px 0 4px;width:100%"><input id="qc-url" style="flex:1" placeholder="Paste a feed or calendar (.ics) URL…" onkeydown="if(event.key===\'Enter\'){const c=document.querySelector(\'.qcb.on\');quickConnect(c&&c.dataset.id||\'rss\');}">';
- h+='<button class="b p qcb on" data-id="rss" onclick="this.parentNode.querySelectorAll(\'.qcb\').forEach(x=>x.classList.remove(\'on\'));this.classList.add(\'on\');quickConnect(\'rss\')">'+ic('rss')+' Feed</button>';
- h+='<button class="b qcb" data-id="ics" onclick="this.parentNode.querySelectorAll(\'.qcb\').forEach(x=>x.classList.remove(\'on\'));this.classList.add(\'on\');quickConnect(\'ics\')">'+ic('calendar-blank')+' Calendar</button></div>';
- h+='<div id="qc-res" class="note" style="min-height:18px;margin:2px 0 6px"></div>';
- h+='<div class="gt" style="margin-top:4px">CONNECTORS</div><div class="types" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">';
- for(const c of C)h+='<div class="ty" '+(c.quick?'onclick="quickConnect(\''+c.id+'\')"':'onclick="autoAddPreset(\''+c.id+'\')"')+' title="'+(c.quick?'one-click ingest':'add a pre-filled '+c.label+' node')+'">'+ic(c.icon||iconForConn(c.id))+'<div><b>'+esc(c.label)+'</b><small>'+esc(c.note)+'</small></div></div>';
+ let h='<div class="card" style="margin-bottom:12px"><div class="fh"><b>'+ic('link-simple')+' Connect</b><span class="note">Bring in a mainstream app — one click, or drop a pre-filled node into the canvas.</span></div>';
+ h+='<div class="types" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">';
+ for(const c of C)h+='<div class="ty" onclick="'+(c.quick?'openFeedModal(\''+c.id+'\')':'autoAddPreset(\''+c.id+'\')')+'" title="'+(c.quick?'add a '+c.label+' URL':'add a pre-filled '+c.label+' node')+'">'+ic(c.icon||iconForConn(c.id))+'<div><b>'+esc(c.label)+'</b><small>'+esc(c.note)+'</small></div></div>';
  h+='</div></div>';
  return h;}
 function iconForConn(id){return {rss:'rss',ics:'calendar-blank',notion:'note-pencil',airtable:'table',github:'git-branch',todoist:'check-square',weather:'cloud',email:'envelope'}[id]||'plug';}
@@ -500,6 +510,7 @@ function drawAuto(){
    else if(AUTO.conn){if(!AUTO.edges.some(e=>e.from===AUTO.conn.id&&e.fromPort===AUTO.conn.port&&e.to===id&&e.toPort===port))AUTO.edges.push({from:AUTO.conn.id,fromPort:AUTO.conn.port,to:id,toPort:port});AUTO.conn=null;document.querySelectorAll('.d').forEach(x=>x.style.boxShadow='');autoEdges();}}));
  }
  autoEdges();
+ const svg=document.getElementById('au-svg');if(svg){let W=320,H=240;const cv=document.getElementById('au-canvas');if(cv){W=Math.max(W,cv.clientWidth);H=Math.max(H,cv.clientHeight);}for(const n of AUTO.nodes){const el=document.getElementById('au-'+n.id);if(!el)continue;W=Math.max(W,n.x+el.offsetWidth+60);H=Math.max(H,n.y+el.offsetHeight+60);}svg.style.width=W+'px';svg.style.height=H+'px';}
 }
 async function autoRun(){
  const name=AUTO.name||('automation '+(ENGINE.view().filter(e=>e.op==='auto+').length+1));
@@ -525,8 +536,8 @@ function runSql(){const el=document.getElementById('sql-res');const q=(document.
   let h='<div class="note">'+r.rows.length+' row'+(r.rows.length===1?'':'s')+'</div><div class="wrap" style="margin-top:6px"><table><tr>'+cols.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr>'+r.rows.map(row=>'<tr>'+cols.map(c=>'<td>'+esc(row[c]==null?'':row[c])+'</td>').join('')+'</tr>').join('')+'</table></div>';
   el.innerHTML=h;}catch(e){el.innerHTML='<div class="alert">'+esc(e.message)+'</div>';}}
 function dl(name,text,type){const b=new Blob([text],{type});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},0);}
-function convertDl(format,table){try{const r=ENGINE.convert({format,table:table||null,ws:U.ws});dl(r.name,r.text,r.mime);return r;}catch(e){alert(String(e&&e.message||e));return null;}}
-function convertMenu(id,table){return '<select id="'+id+'">'+Object.keys(window.Project.PROJECTORS).map(f=>'<option value="'+f+'">'+window.Project.PROJECTORS[f].label+'</option>').join('')+'</select><button class="b p" onclick="convertDl(document.getElementById(\''+id+'\').value,'+(table?'\''+table+'\'':'null')+')">'+ic('download-simple')+' Convert</button>';}
+function convertDl(format,table){try{const r=ENGINE.convert({format,table:table||null});dl(r.name,r.text,r.mime);return r;}catch(e){alert(String(e&&e.message||e));return null;}}
+function convertMenu(id,table){return '<span class="note">Convert</span><select id="'+id+'" style="width:auto">'+Object.keys(window.Project.PROJECTORS).map(f=>'<option value="'+f+'">'+window.Project.PROJECTORS[f].label+'</option>').join('')+'</select><button class="b p" onclick="convertDl(document.getElementById(\''+id+'\').value,'+(table?'\''+table+'\'':'null')+')">'+ic('download-simple')+' Download</button>';}
 /* ================= network ================= */
 function renderNetwork(){
   const g=ENGINE.networkGraph(), el=document.getElementById('net-canvas'); if(!el)return;
@@ -581,10 +592,16 @@ function listSpaces(){try{return JSON.parse(localStorage.getItem('eodb-spaces')|
 function currentSpace(){return localStorage.getItem('eodb-space')||listSpaces()[0]||'Work';}
 function createSpace(n){n=String(n||'').trim()||'New space';const s=listSpaces();if(!s.includes(n)){s.push(n);localStorage.setItem('eodb-spaces',JSON.stringify(s));}localStorage.setItem('eodb-space',n);return n;}
 function switchSpace(n){localStorage.setItem('eodb-space',n);location.reload();}
-function addSpace(){const n=prompt('New space name');if(n){createSpace(n);location.reload();}}
+function openNewSpace(){document.getElementById('sheet').innerHTML=
+ '<div class="fh"><h2>Create a new space</h2><button class="b g" style="margin-left:auto" onclick="closeM()">'+ic('x')+'</button></div>'+
+ '<p class="note">A space is a whole separate store with its own keys and files — <b>not</b> a database inside this space. Give it a name and it opens fresh.</p>'+
+ '<div class="field"><label class="note">Name</label><input id="nspace" placeholder="e.g. Work, Personal, Archive" onkeydown="if(event.key===\'Enter\')spaceCreate()"></div>'+
+ '<button class="b p" onclick="spaceCreate()">'+ic('check')+' Create space</button>';
+ document.getElementById('modal').classList.add('on');focusId('nspace');}
+function spaceCreate(){const n=String((document.getElementById('nspace')||{}).value||'').trim();if(!n)return;createSpace(n);location.reload();}
 function spaceSwitcher(){const cur=currentSpace();let h='';
+ h+='<button class="b p" style="margin:4px 8px 6px;width:calc(100% - 16px);justify-content:center" onclick="openNewSpace()">'+ic('plus')+' New space</button>';
  for(const s of listSpaces())h+='<div class="it sp '+(s===cur?'on':'')+'" data-space="'+esc(s)+'" onclick="switchSpace(this.dataset.space)">'+(s===cur?'●':'○')+' '+esc(s)+'</div>';
- h+='<div class="it sp" onclick="addSpace()">'+ic('plus-circle')+' New space</div>';
  return h;}
 function sideCrumb(){
  const segs=[{label:currentSpace(),go:'goHome()'}];
@@ -606,7 +623,7 @@ function sideCrumb(){
 }
 function side(){
  const onDoc=/^doc:/.test(U.sel);
- let h='<div class="brand">'+ic('hard-drives')+'<div>Spaces<small>encrypted separately</small></div></div>';
+ let h='<div class="brand">'+ic('hard-drives')+'<div>Spaces</div></div>';
  h+=sideCrumb();
  h+=spaceSwitcher();
  h+='<div class="it '+(U.sel==='files'||U.sel==='match'?'on':'')+'" onclick="U.sel=\'files\';render()">'+ic('archive')+' Files<span class="n">'+wsFiles(U.ws).length+'</span></div>';
