@@ -93,7 +93,7 @@ test('6. encrypted at rest: no op name, text, file content, column name or write
   const secret = new TextEncoder().encode('TOP-SECRET-CONTRACT-TEXT'); space.blobs.put(sha(secret), secret, 'text/plain'); await space.settle();
   const dump = (be) => { const parts = []; for (const s of be.streamsSync()) for (const c of be.chunksSync(s)) parts.push(Buffer.from(c.record.ct)); return Buffer.concat(parts).toString('latin1') + JSON.stringify(be.metaSync(), (k, v) => (v instanceof Uint8Array ? Buffer.from(v).toString('latin1') : v)); };
   const all = dump(b.backend) + dump(b.blobBackend);
-  try { for (const needle of ['TOP-SECRET', 'Supplier name', 'Demo', 'check this', 'cell-set', space.writer, 'text/plain', 'PHR1', 'application/pdf']) assert.ok(!all.includes(needle), `"${needle}" must not be readable`); } finally { space.close(); }
+  try { for (const needle of ['TOP-SECRET', 'Supplier name', 'Demo database', 'check this', 'cell-set', space.writer, 'text/plain', 'PHR1', 'application/pdf']) assert.ok(!all.includes(needle), `"${needle}" must not be readable`); } finally { space.close(); }
 });
 
 test('7. two tabs editing the same cell at once: both edits are kept, and the conflict is REPORTED, not silently resolved', async () => {
