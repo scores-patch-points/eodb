@@ -30,10 +30,12 @@ import * as Automation from './automation.mjs';
 import * as Relational from './relational.mjs';
 import * as Project from './project.mjs';
 import * as Opencode from './opencode.mjs';
+import * as Nodered from './nodered.mjs';
 window.Automation=Automation;
 window.Relational=Relational;
 window.Project=Project;
 window.Opencode=Opencode;
+window.Nodered=Nodered;
 </script>
 <script>
 (function(){try{var t=localStorage.getItem('eodb-theme');if(t!=='light'&&t!=='dark')t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
@@ -227,7 +229,7 @@ td input{font:inherit;padding:2px 6px;border:1px solid var(--acc);border-radius:
 .bcrumbs .bc.on{color:var(--ink);font-weight:600;cursor:default}
 .bcrumbs .bc.on:hover{background:none}
 </style><style id="auto-css">
-.au-canvas{position:relative;overflow:auto;border:1px solid var(--line);border-radius:12px;background:linear-gradient(90deg,#fbfaf7 1px,transparent 1px)0 0/24px 24px,linear-gradient(#fbfaf7 1px,transparent 1px)0 0/24px 24px,#fff;min-height:360px}
+.au-canvas{position:relative;overflow:auto;border:1px solid var(--line);border-radius:12px;background:linear-gradient(90deg,#fbfaf7 1px,transparent 1px)0 0/24px 24px,linear-gradient(#fbfaf7 1px,transparent 1px)0 0/24px 24px,#fff;min-height:360px;height:calc(100vh - 175px)}
 .au-node{position:absolute;z-index:2;width:184px;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.08)}
 .au-node .h{display:flex;align-items:center;gap:7px;padding:7px 10px;cursor:grab;border-bottom:1px solid var(--line);font-weight:600}
 .au-node .h .x{margin-left:auto;cursor:pointer;color:var(--mut);font-size:13px}
@@ -487,6 +489,37 @@ function connectPanel(){const C=(window.Automation&&window.Automation.CONNECTORS
  h+='</div></div>';
  return h;}
 function iconForConn(id){return {rss:'rss',ics:'calendar-blank',notion:'note-pencil',airtable:'table',github:'git-branch',todoist:'check-square',weather:'cloud',email:'envelope'}[id]||'plug';}
+function iconForNode(t){return {http:'link-simple',rss:'rss',file:'file-text',json:'file-code',transform:'magic-wand',store:'table',webhook:'arrow-right',model:'cpu',ics:'calendar-blank',email:'envelope',text:'text-aa'}[t]||'function';}
+/* the n8n-style node picker: one searchable, categorized list of every node type + connector. */
+function openNodePicker(){document.getElementById('sheet').innerHTML=
+ '<div class="fh"><h2>Add node</h2><button class="b g" style="margin-left:auto" onclick="closeM()">'+ic('x')+'</button></div>'+
+ '<input id="npq" placeholder="Search nodes… (e.g. rss, github, http)" oninput="nodePickFilter()" style="margin-bottom:12px">'+
+ '<div id="nplist"></div>';
+ document.getElementById('modal').classList.add('on');focusId('npq');nodePickFilter();}
+function nodePickFilter(){const q=String((document.getElementById('npq')||{}).value||'').toLowerCase();
+ const D=autoDefs();const C=(window.Automation&&window.Automation.CONNECTORS)||[];
+ let nodes=[];
+ for(const [id,d] of Object.entries(D)){if(q&&!((id+' '+d.label).toLowerCase().includes(q)))continue;nodes.push({id,label:d.label,note:d.out&&d.out.length?('outputs: '+d.out.join(', ')):'',icon:iconForNode(id),kind:'node'});}
+ let conns=[];
+ for(const c of C){if(q&&!((c.id+' '+c.label+' '+c.note).toLowerCase().includes(q)))continue;conns.push({id:c.id,label:c.label,note:c.note,icon:iconForConn(c.id),quick:c.quick,kind:'connector'});}
+ const el=document.getElementById('nplist');if(!el)return;
+ const row=(r)=>{const act=r.kind==='connector'?(r.quick?'openFeedModal(\''+r.id+'\')':'autoAddPreset(\''+r.id+'\')'):'autoAdd(\''+r.id+'\')';return '<div class="res" onclick="closeM();'+act+'">'+ic(r.icon)+'<div><b>'+esc(r.label)+'</b>'+(r.note?'<small>'+esc(r.note)+'</small>':'')+'</div></div>';};
+ el.innerHTML=(nodes.length?'<div class="gt">NODES</div>'+nodes.map(row).join('')+'':'')+(conns.length?'<div class="gt">CONNECTORS</div>'+conns.map(row).join('')+'':'')||'<p class="note">No nodes match “'+esc(q)+'”.</p>';
+}
+function openNrImport(){document.getElementById('sheet').innerHTML=
+ '<div class="fh"><h2>Import a Node-RED flow</h2><button class="b g" style="margin-left:auto" onclick="closeM()">'+ic('x')+'</button></div>'+
+ '<p class="note">Paste a flow export from Node-RED or <span class="tag">flows.nodered.org</span>. Nodes are mapped onto this app; unknown types become HTTP nodes.</p>'+
+ '<textarea id="nrjson" rows="10" style="width:100%;font-family:var(--mono);padding:8px;border:1px solid var(--line);border-radius:8px" placeholder=\'[ { "id": "a", "type": "http request", "url": "https://…", "wires": [["b"]] } ]\'></textarea>'+
+ '<div id="nrres" class="note" style="min-height:16px;margin:8px 0"></div>'+
+ '<button class="b p" onclick="nrImport()">'+ic('git-branch')+' Import into canvas</button>';
+ document.getElementById('modal').classList.add('on');}
+function nrImport(){const raw=(document.getElementById('nrjson')||{}).value||'';const res=document.getElementById('nrres');
+ try{const r=window.Nodered.importFlow(raw);
+  AUTO.nodes=r.nodes;AUTO.edges=r.edges;AUTO.conn=null;AUTO.n=1+r.nodes.length;
+  closeM();drawAuto();
+  if(r.warnings&&r.warnings.length)U.msg='Imported '+r.nodes.length+' nodes · '+r.warnings.length+' note(s): '+r.warnings.slice(0,3).join('; ');
+  render();
+ }catch(e){if(res){res.textContent='Failed: '+(e&&e.message||e);res.style.color='var(--bad)';}}}
 
 function autoRemove(id){AUTO.nodes=AUTO.nodes.filter(n=>n.id!==id);AUTO.edges=AUTO.edges.filter(e=>e.from!==id&&e.to!==id);drawAuto();}
 function autoPortCenter(id,port,dir){const el=document.getElementById('au-'+id);if(!el)return null;const p=el.querySelector('.p.'+dir+'[data-port="'+port+'"] .d');if(!p)return null;const r=p.getBoundingClientRect(),c=el.parentNode.getBoundingClientRect();return{x:r.left-c.left+r.width/2+el.parentNode.scrollLeft,y:r.top-c.top+r.height/2+el.parentNode.scrollTop};}
@@ -623,10 +656,7 @@ function sideCrumb(){
 function side(){
  if(U.sel==='auto'){
   let h='<div class="brand">'+ic('git-branch')+'<div>Automations<small>nodes → graph → log</small></div></div>';
-  const C=(window.Automation&&window.Automation.CONNECTORS)||[];
-  if(C.length){h+='<div class="side-h">CONNECT</div>';for(const c of C)h+='<div class="it" title="'+esc(c.note)+'" onclick="'+(c.quick?'openFeedModal(\''+c.id+'\')':'autoAddPreset(\''+c.id+'\')')+'">'+ic(c.icon||iconForConn(c.id))+' '+esc(c.label)+'</div>';}
-  h+='<div class="side-h">ADD NODE</div>';
-  h+=Object.keys(autoDefs()).map(t=>'<div class="it" onclick="autoAdd(\''+t+'\')">'+ic('plus')+' '+autoDefs()[t].label+'</div>').join('');
+  h+='<div style="padding:8px"><button class="b p" style="width:100%;justify-content:center" onclick="openNodePicker()">'+ic('plus')+' Add node</button><button class="b" style="width:100%;justify-content:center;margin-top:6px" onclick="openNrImport()">'+ic('download-simple')+' Import Node-RED flow</button></div>';
   h+='<div class="side-h">RUN</div>';
   h+='<div style="padding:0 8px;display:flex;gap:6px"><button class="b p" style="flex:1;justify-content:center" onclick="autoRun()">'+ic('arrow-right')+' Run</button><button class="b" onclick="autoSave()">'+ic('check')+' Save</button><button class="b" onclick="autoClear()">'+ic('eraser')+' Clear</button></div>';
   h+='<div class="side-h">SAVED</div>';
