@@ -551,7 +551,7 @@ function drawAuto(){
 }
 async function autoRun(){
  const name=AUTO.name||('automation '+(ENGINE.view().filter(e=>e.op==='auto+').length+1));
- const res=await ENGINE.runAutomation({name,nodes:AUTO.nodes,edges:AUTO.edges},{askModel:askModel,fetch:fetch});
+ const res=await ENGINE.runAutomation({name,nodes:AUTO.nodes,edges:AUTO.edges},{fetch:fetch});
  for(const id of res.order){const r=res.results[id];const el=document.getElementById('au-out-'+id);if(!el)continue;el.textContent=JSON.stringify(r.output,null,1);el.style.color=r.ok?'var(--acc)':'var(--bad)';}
 }
 function autoSave(){if(!AUTO.nodes.length)return;const name='automation '+(ENGINE.view().filter(e=>e.op==='auto+').length+1);ENGINE.append('auto+',{name,nodes:AUTO.nodes,edges:AUTO.edges});drawAuto();}
@@ -1701,41 +1701,17 @@ function mechAnswer(q,att){const v=defVoid(q);const r=evaAgainst(v,att);if(r.fil
 function chatContext(q,c){if(!c)return'';const done=c.msgs.filter(m=>m.text&&!m.pending);if(!done.length)return'';const recent=done.slice(-12);const toks=askToks(q).filter(w=>w.length>4);const older=done.slice(0,-12);const rec=[];if(toks.length&&older.length){for(const m of older){const mt=(m.text||'').toLowerCase();const h=toks.filter(w=>mt.includes(w)).length;if(h)rec.push({m,h});}rec.sort((a,b)=>b.h-a.h);}const parts=[];if(rec.length)parts.push('Recalled from earlier:\n'+rec.slice(0,4).map(r=>(r.m.role==='user'?'User: ':'Assistant: ')+r.m.text).join('\n'));parts.push('Recent:\n'+recent.map(m=>(m.role==='user'?'User: ':'Assistant: ')+m.text).join('\n'));return parts.join('\n\n');}
 async function ask(q,att,onChunk){const t=String(q||'').trim().toLowerCase();const greet=/^(hi|hello|hey|how are you|whats up|what's up|yo|sup|good (morning|afternoon|evening))\b/.test(t);
  if(!(att&&att.length)&&greet){return {answer:'Doing well \u2014 what can I help you with?',facts:[],system:personaFor(q),user:q,checks:[],mech:true};}
- const mech=mechAnswer(q,att);if(mech){return {answer:mech.answer,facts:[],system:'(mechanical \u2014 no model)',user:q,checks:[{s:mech.steps.join(' \u2192 '),standing:'supported'}],mech:true};}
- const facts=retrieve(q,att);const withData=facts.length>0||(att&&att.length>0);
- const isMath=/\d/.test(q)&&/[+\-*/=]/.test(q);const isResearch=/\b(research|look up|find out|explain)\b/i.test(q)&&!withData&&!greet&&!isMath;
- const c=curChat();const lastUser=c?c.msgs.filter(m=>m.role==='user').at(-1):null;const lastSys=c?c.msgs.filter(m=>m.role==='sys'&&m.text).at(-1):null;
- if(isResearch){const r=await research(q);if(r){const checks=gradeAnswer(r.answer,r.facts);return {answer:r.answer,mouth:r.mouth,facts:r.facts,system:r.system,user:r.user,checks,err:null,mech:false};}}
- const isFollow=!withData&&!att.length&&/^(which one|what about|how about|tell me more|and him|and her|and them|more on|elaborate|expand)\b/i.test(q.trim())&&lastSys;
-  const system=withData?(personaFor(q)+DATA_RULE):'You are a helpful assistant. Answer directly and concisely. Do not make up data or describe databases unless asked.';
-  const hist=(!withData&&!isFollow&&c)?chatContext(q,c):'';
-  const user=withData?('DATA:\n'+facts.join('\n')+'\n\nQuestion: '+q):(isFollow?('Previous answer: '+lastSys.text+'\n\nFollow-up question: '+q):(hist?('Conversation so far:\n'+hist+'\n\nQuestion: '+q):q));
-  // The model is the MOUTH (it only emits raw candidates); the system is the VOICE (it evaluates, re-grounds, selects, and shapes what is said).
-  // The loop is bound by the MEASURED loop, not a hand-set count: each round reports how much remains unresolved (the falsifier's
-  // unsupported/contradicted count), and the streaming-DMD growth of that count decides whether to keep repairing or stop.
-  let answer=null,err=null,mouths=[],recCount=0,checks=[],lastV=null;
-  const ML=window.makeMeasuredLoop?window.makeMeasuredLoop({ceiling:6}):null;
-  let best=null;
-  for(let round=0;;round++){
-   let m=null;
-   try{m=await askModel(round===0?user:('DATA:\n'+facts.join('\n')+'\n\nQuestion: '+q+'\n\nAnswer using only the DATA above, and cite the numbers you use.'),system,round===0?onChunk:null);}catch(e){err=e;}
-   if(!m)break;
-   const eva=evaRules(m);if(!eva.ok)recCount++;
-   const spoken=voice(eva.ok?m:recRules(m));
-   mouths.push({spoken});
-   const c=gradeAnswer(spoken,facts);
-   const bad=c.filter(x=>x.standing==='unsupported'||x.standing==='contradicted').length;
-   if(!best||bad<best.bad)best={spoken,checks:c,bad};
-   if(!ML)break;
-   ML.push(bad);lastV=ML.verdict();
-   if(!lastV.continue)break;
-  }
-  if(best){answer=best.spoken;checks=best.checks;}
-  if(!answer){answer=facts.length?fallbackAnswer(q,facts):'I couldn\'t reach the local model. Is Ollama running on port 11434?';}
-  const stopped=lastV?lastV.verdict:'aborted';
-  const trace='measured loop '+stopped+' after '+mouths.length+' mouth call'+(mouths.length===1?'':'s')+(recCount?(' ('+recCount+' eva clean'+(recCount===1?'':'s')+')'):'');
-  checks.push({s:trace,standing:(best&&best.bad===0)?'supported':'partial'});
-  return {answer,mouth:mouths.length?mouths[0].spoken:null,facts,system,user,checks,err:err&&String(err.message||err)};}
+ return modelAnswer(q,att,onChunk);}
+/* ---- the model, without an LLM: mechanical answers + the fold (khora reader) for grounded facts. ---- */
+function modelAnswer(q,att,onChunk){
+ const mech=mechAnswer(q,att);
+ if(mech){const a=mech.answer;if(onChunk)onChunk(a);return {answer:a,facts:[],system:'(mechanical \u2014 no model)',user:q,checks:[{s:mech.steps.join(' \u2192 '),standing:'supported'}],mech:true};}
+ const facts=retrieve(q,att);
+ let answer;
+ if(!facts.length){answer='The fold found nothing for that. Ask about your tables, files, notes or documents \u2014 I answer from the log, not from a model.';}
+ else{answer='From the log ('+facts.length+' match'+(facts.length===1?'':'es')+'):\n\n'+facts.slice(0,12).map(f=>'\u2022 '+f).join('\n');}
+ if(onChunk)onChunk(answer);
+ return {answer,facts,system:'(deterministic \u2014 no LLM)',user:q,checks:[{s:'fold + khora reader',standing:'supported'}],mech:true};}
 function vChat(){const c=curChat();
  let h=crumb(ic('chat-circle-text')+' Ask')+'<h1 style="display:flex;align-items:center;gap:8px">Ask<span style="margin-left:auto;display:flex;gap:6px;align-items:center">'+(c?'<button class="cicon sm" title="New thread here" aria-label="New thread" onclick="newThread()">'+ic('chat-text')+'</button>':'')+ocToggle()+'</span></h1>';
  const msgs=c?c.msgs.map(m=>'<div class="cmsg '+(m.role==='user'?'cu':'cs')+'"><div class="cbody">'+(m.att&&m.att.length?'<div class="catts">'+m.att.map(a=>'<span class="chip c-b">'+ic('paperclip')+' '+esc(a.name)+'</span>').join('')+'</div>':'')+(m.pending?'<span class="think">thinking\u2026</span>':md(m.text))+(m.system?'<details class="cground"><summary>prompt</summary><pre class="cp">'+esc('system: '+m.system+'\n\nuser: '+m.user)+'</pre></details>':'')+(m.checks&&m.checks.length?'<details class="cground"><summary>checked (Murch pace + fold falsify)</summary>'+m.checks.map(x=>'<div class="ck '+x.standing+'">'+(x.standing==='supported'?'\u2713':x.standing==='partial'?'~':'\u26a0')+' '+esc(x.s)+'</div>').join('')+'</details>':'')+(m.facts&&m.facts.length?'<details class="cground"><summary>thinking ('+m.facts.length+')</summary>'+esc(m.facts.join('\n')).replace(/\n/g,'<br>')+'</details>':'')+(m.tools&&m.tools.length?'<details class="cground"><summary>activity ('+m.tools.length+')</summary>'+m.tools.map(t=>'<div class="ck">'+esc(t)+'</div>').join('')+'</details>':'')+'</div></div>').join(''):'';
@@ -1745,14 +1721,14 @@ function vChat(){const c=curChat();
  return '<div class="cchat">'+h+'<div class="cmsgs">'+(c&&c.msgs.length?msgs:welcome)+'</div>'+input+'</div>';}
 function cqGrow(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,200)+'px';const b=document.getElementById('csend');if(b){const on=!!(el.value.trim());b.disabled=!on;b.classList.toggle('on',on);}}
 function cqKey(e){if(e.key==='Enter'&&!e.shiftKey){if(e.isComposing||e.keyCode===229)return;e.preventDefault();askSend();}}
-async function askSend(){const el=document.getElementById('cq');const q=(el&&el.value||'').trim();if(!q)return;el.value='';cqGrow(el);const long=/^(longform|write|report):/i.test(q);const q0=q.replace(/^(longform|write|report):\s*/i,'');let c=curChat();if(!c){c={id:uid('c'),title:q.slice(0,40),msgs:[]};U.chats.unshift(c);U.chatId=c.id;}
+async function askSend(){const el=document.getElementById('cq');const q=(el&&el.value||'').trim();if(!q)return;el.value='';cqGrow(el);let c=curChat();if(!c){c={id:uid('c'),title:q.slice(0,40),msgs:[]};U.chats.unshift(c);U.chatId=c.id;}
  const att=U.att.slice();U.att=[];
  c.msgs.push({role:'user',text:q,att});
  c.msgs.push({role:'sys',text:'',pending:true});
  render();focusId('cq');
  const bubble=[...document.querySelectorAll('.cmsg.cs .cbody')].pop();
  const onTok=(tok)=>{const m=c.msgs[c.msgs.length-1];m.text+=tok;m.pending=false;if(bubble)bubble.innerHTML=md(m.text);};
- const r=(U.chatBackend==='opencode'&&ocConfig())?await askOpencode(q,c,onTok):(long?await longform(q0,att,onTok):await ask(q0,att,onTok));
+ const r=(U.chatBackend==='opencode'&&ocConfig())?await askOpencode(q,c,onTok):await ask(q,att,onTok);
  c.msgs[c.msgs.length-1]={role:'sys',text:r.answer,facts:r.facts,system:r.system,user:r.user,checks:r.checks,tools:r.tools};
  render();focusId('cq');}
 
@@ -1763,7 +1739,7 @@ function storebar(){let b=document.getElementById('storebar');const r=ENGINE.rep
 (async()=>{await boot();render();storebar();setInterval(storebar,1000);ocAutoRedeem();
  // a tab is also a worker peer: every N seconds, fold the log and run any due poll/schedule trigger (while the tab is open).
  // The headless node / server run the same loop always-on; the log's claims keep them from double-running.
- const workerTick=()=>{if(window.ENGINE&&window.Worker){window.Worker.workerPass(window.ENGINE,{fetch:fetch,askModel:askModel}).catch(()=>{});}};
+ const workerTick=()=>{if(window.ENGINE&&window.Worker){window.Worker.workerPass(window.ENGINE,{fetch:fetch}).catch(()=>{});}};
  setInterval(workerTick,30000);
 })();
 

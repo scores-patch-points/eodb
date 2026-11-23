@@ -23,7 +23,6 @@ export const NODE_TYPES = {
   transform: { label: 'Transform rows', in: ['data'], out: ['rows', 'columns'], fields: [['op', 'select', 'flatten', ['flatten', 'pick', 'filter', 'rename']], ['arg', 'text', 'columns/keys to pick, or col=value']] },
   store: { label: 'Store to table', in: ['rows', 'columns', 'name'], out: ['tableId', 'count'], fields: [['name', 'text', 'table name'], ['ws', 'text', 'w1'], ['append', 'checkbox', 'append to existing table']] },
   webhook: { label: 'Webhook', in: [], out: ['data'], fields: [] },
-  model: { label: 'Model', in: ['prompt'], out: ['answer'], fields: [['prompt', 'textarea', 'prompt (or wire it in)']] },
 };
 
 // ---- the ingest primitive: any JSON value -> { columns, rows } ------------------------------------------------
@@ -245,11 +244,6 @@ const RUNNERS = {
     const key = `store:${ctx.automation || 'auto'}:${ws}:${name}`;
     const r = await ctx.space.landTable({ name, columns, rows, ws, append: !!fields.append, key });
     return { tableId: r.tableId, count: r.rows };
-  },
-  model: async ({ fields, inputs, ctx }) => {
-    if (!ctx.askModel) throw new Error('model node needs ctx.askModel');
-    const prompt = inputs.prompt !== undefined ? inputs.prompt : (fields.prompt || '');
-    return { answer: await ctx.askModel(prompt) };
   },
   webhook: async ({ ctx }) => ({ data: ctx.triggerData && ctx.triggerData.body !== undefined ? ctx.triggerData.body : (ctx.triggerData || {}) }),
 };
