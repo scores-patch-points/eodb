@@ -683,10 +683,10 @@ function side(){
   h+='<div style="display:flex;gap:6px;padding:6px 8px 6px 28px"><button class="b p" style="flex:1;justify-content:center" onclick="newChat()">'+ic('plus')+' Chat</button><button class="b" style="flex:1;justify-content:center" onclick="newProject()">'+ic('folder-open')+' Project</button></div>';
   h+='<div class="corg" style="padding:0 4px 0 28px">'+(chatTree()||'<div class="cempty">No conversations yet.</div>')+'</div>';
  }
- h+='<div class="it '+(U.sel==='auto'?'on':'')+'" onclick="U.sel=\'auto\';render()">'+ic('git-branch')+' Automations</div>';
- h+='<div class="it '+(U.sel==='sql'?'on':'')+'" onclick="U.sel=\'sql\';render()">'+ic('database')+' SQL</div>';
  h+='<div class="it '+(U.sel==='net'?'on':'')+'" onclick="U.sel=\'net\';render()">'+ic('link-simple')+' Network</div>';
  h+='<div class="side-h">DATABASES</div>';
+ h+='<div class="it '+(U.sel==='auto'?'on':'')+'" onclick="U.sel=\'auto\';render()">'+ic('git-branch')+' Automations</div>';
+ h+='<div class="it '+(U.sel==='sql'?'on':'')+'" onclick="U.sel=\'sql\';render()">'+ic('database')+' SQL</div>';
  for(const w of D.ws){const on=U.ws===w.id;
   h+='<div class="ws '+(on?'on':'')+'"><div class="wsh" onclick="goWs(\''+w.id+'\')">'+ic(on?'folder-open':'folder')+' '+esc(w.name)+'</div>';
   if(on)h+=wsTables(w.id).map(t=>'<div class="it sub '+(U.sel===t.id?'on':'')+'" onclick="goTb(\''+t.id+'\')">'+ic('caret-right')+' '+esc(t.name)+'<span class="n">'+t.r.length+'</span></div>').join('');
