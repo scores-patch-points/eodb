@@ -408,7 +408,7 @@ async function seed(){
  D=fold();
 }
 /* ================= UI state ================= */
-let U={dpanel:null,hist:null,share:false,cur:null,cb:null,focus:null,recmsg:'',open:null,view:null,qr:false,chats:[],collapsed:{},chatId:null,att:[],ws:'w1',sel:'ws',tab:'data',mtab:'match',src:null,adding:null,edit:null,tt:null,virt:null,msg:'',pickCol:null,pickRel:'close',driftOn:false,driftDone:false,drop:'',fpanel:null,fhist:null,chatBackend:'opencode',oc:null};
+let U={dpanel:null,hist:null,share:false,cur:null,cb:null,focus:null,recmsg:'',open:null,view:null,qr:false,chats:[],collapsed:{},chatId:null,att:[],ws:'w1',sel:'ws',tab:'data',mtab:'match',src:null,adding:null,edit:null,tt:null,virt:null,msg:'',pickCol:null,pickRel:'close',driftOn:false,driftDone:false,drop:'',fpanel:null,fhist:null,chatBackend:'model',oc:null};
 const W=()=>D.ws.find(w=>w.id===U.ws);
 const TB=id=>D.tb.find(t=>t.id===id);
 const wsTables=w=>D.tb.filter(t=>t.ws===w);
@@ -1280,8 +1280,9 @@ async function boot(){
  ENGINE.onChange(()=>{refreshLog();D=fold();render();storebar();});ENGINE.onStatus(()=>{refreshLog();storebar();});storebar();}
 const DEFAULT_ROUTES=window.EODB_ROUTES||['relay:'+location.origin];
 const EODB_MODEL=window.EODB_MODEL||{url:'http://127.0.0.1:11434',model:'gemma2:2b'};
-/* ---- OpenCode remote: drive this machine's opencode over its HTTP API (Basic auth). url + password + cwd, stored locally. ---- */
-function ocConfig(){try{const s=JSON.parse(localStorage.getItem('eodb-opencode')||'null');if(s&&s.url)return s;}catch{}
+/* ---- OpenCode remote: drive this machine's opencode over its HTTP API (Basic auth). Hidden behind ?dev in the URL. ---- */
+const isDev=()=>new URLSearchParams(location.search).has('dev');
+function ocConfig(){if(!isDev())return null;try{const s=JSON.parse(localStorage.getItem('eodb-opencode')||'null');if(s&&s.url)return s;}catch{}
  return {url:'/oc',password:'',username:'opencode',cwd:''};}
 function ocSet(c){try{localStorage.setItem('eodb-opencode',JSON.stringify(c));}catch{}}
 function ocSave(){const u=(document.getElementById('ocurl')||{}).value,p=(document.getElementById('ocpw')||{}).value,d=(document.getElementById('occwd')||{}).value;
@@ -1310,7 +1311,7 @@ async function ocPair(){const cfg=ocConfig();if(!cfg)return;
   el.innerHTML='<div class="field" style="margin-top:10px"><label class="note">Pairing link (open on the other device):</label><div class="mono" style="word-break:break-all">'+esc(link)+'</div></div>'+(window.QRCodeLib?'<div style="text-align:center;margin-top:8px"><img id="ocqr" alt="QR" style="width:180px;height:180px;border-radius:8px;border:1px solid var(--line)"></div>':'');
   if(window.QRCodeLib){try{const img=document.getElementById('ocqr');img.src=await window.QRCodeLib.toDataURL(link,{margin:2,width:480,errorCorrectionLevel:'M'});}catch(e){}}
  }catch(e){alert('Could not generate a pairing code: '+(e&&e.message||e));}}
-async function ocAutoRedeem(){const m=/#(?:[^&]*&)?oc=([A-Za-z0-9_-]+)/.exec(location.hash);if(!m||ocConfig())return;
+async function ocAutoRedeem(){if(!isDev())return;const m=/#(?:[^&]*&)?oc=([A-Za-z0-9_-]+)/.exec(location.hash);if(!m||ocConfig())return;
  const cfg={url:ocConfig()?ocConfig().url:'/oc'};try{const r=await window.Opencode.connect({url:cfg.url},m[1]);ocSet({url:cfg.url,password:r.token,username:'opencode',cwd:'.'});U.chatBackend='opencode';history.replaceState(null,'',location.pathname+location.search);}catch(e){}}
 /* ---- askOpenCode: one continuing session per chat thread, streamed deltas ---- */
 async function askOpencode(q,c,onChunk){const cfg=ocConfig();if(!cfg)return {answer:'OpenCode is not connected. Use the OpenCode button in the header to connect it.',mech:true,oc:true};
@@ -1320,7 +1321,7 @@ async function askOpencode(q,c,onChunk){const cfg=ocConfig();if(!cfg)return {ans
   const r=await O.chat(cfg,c.ocSession,q,{onDelta:(t)=>{const m=c.msgs[c.msgs.length-1];m.text+=t;m.pending=false;if(onChunk)onChunk(t);},onTool:(d)=>{const m=c.msgs[c.msgs.length-1];(m.tools=m.tools||[]).push((d.tool&&(d.tool.name||d.tool.id))||d.name||'tool');}});
   return {answer:r.text||'(no text — see activity)',mech:true,oc:true,tools:r.tools||[]};
  }catch(e){return {answer:'OpenCode error: '+String(e&&e.message||e),mech:true,oc:true};}}
-function ocToggle(){const cfg=ocConfig();const on=U.chatBackend==='opencode'&&!!cfg;
+function ocToggle(){if(!isDev())return '';const cfg=ocConfig();const on=U.chatBackend==='opencode'&&!!cfg;
  return '<span class="ocseg" style="margin-left:auto">'
   +'<button class="'+(on?'':'on')+'" onclick="U.chatBackend=\'model\';render()" title="Local model (Ollama)">'+ic('cpu')+' Model</button>'
   +'<button class="'+(on?'on':'')+'" onclick="'+(cfg?"U.chatBackend=\'opencode\';render()":'openOcPanel()')+'" title="Drive OpenCode on this machine">'+ic('code')+' OpenCode'+(cfg?'':' · connect')+'</button>'
