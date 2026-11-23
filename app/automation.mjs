@@ -130,17 +130,35 @@ export function parseIcs(text) {
   return { title, events };
 }
 
-// ---- connector catalog: mainstream apps as pre-filled nodes (Tier 0/1/2 — no OAuth) -------------------------
-// Each entry is a starting node. `quick: 'url'` means it is a one-click ingest (the host builds rss/ics -> store).
+// ---- connector catalog: mainstream apps as RECIPES (data, not code) ----------------------------------------------
+// Each entry is a source node (usually http — the universal connector) plus a `pick` hint (which flattened fields to keep).
+// `quick: 'url'` means it is a one-click ingest (the host builds rss/ics -> store from a URL). Adding a recipe drops the
+// whole source -> transform -> store chain onto the canvas, so "any integration" is one click and every step is audited.
 export const CONNECTORS = [
-  { id: 'rss', label: 'RSS / Atom feed', note: 'blog, Substack, podcast, YouTube, GitHub releases', quick: 'url', node: { type: 'rss', fields: {} } },
-  { id: 'ics', label: 'Calendar (.ics URL)', note: 'Google / Outlook private calendar link', quick: 'url', node: { type: 'ics', fields: {} } },
-  { id: 'notion', label: 'Notion', note: 'internal integration secret', node: { type: 'http', fields: { method: 'POST', url: 'https://api.notion.com/v1/search', headers: '{"Notion-Version":"2022-06-28","Content-Type":"application/json"}', auth: 'Bearer <integration-secret>', body: '{}' } } },
-  { id: 'airtable', label: 'Airtable', note: 'personal access token', node: { type: 'http', fields: { method: 'GET', url: 'https://api.airtable.com/v0/<baseId>/<tableId>', headers: '', auth: 'Bearer <personal-access-token>' } } },
-  { id: 'github', label: 'GitHub', note: 'fine-grained PAT', node: { type: 'http', fields: { method: 'GET', url: 'https://api.github.com/repos/<owner>/<repo>/issues', headers: '{"Accept":"application/vnd.github+json"}', auth: 'Bearer <pat>' } } },
-  { id: 'todoist', label: 'Todoist', note: 'API token', node: { type: 'http', fields: { method: 'GET', url: 'https://api.todoist.com/rest/v2/tasks', headers: '', auth: 'Bearer <api-token>' } } },
-  { id: 'weather', label: 'Weather (Open-Meteo)', note: 'no key needed', node: { type: 'http', fields: { method: 'GET', url: 'https://api.open-meteo.com/v1/forecast?latitude=40.7&longitude=-74.0&current_weather=true', headers: '', auth: '' } } },
-  { id: 'email', label: 'Email (IMAP/SMTP)', note: 'app password, server holds the secret', node: { type: 'email', fields: { action: 'fetch' } } },
+  // Feeds
+  { id: 'rss', cat: 'Feeds', label: 'RSS / Atom feed', note: 'blog, Substack, podcast, YouTube, GitHub releases', quick: 'url', pick: 'title,link,date', node: { type: 'rss', fields: {} } },
+  { id: 'ics', cat: 'Feeds', label: 'Calendar (.ics URL)', note: 'Google / Outlook private calendar link', quick: 'url', pick: 'summary,start,end,location', node: { type: 'ics', fields: {} } },
+  { id: 'hackernews', cat: 'Feeds', label: 'Hacker News', note: 'stories via the Algolia API (no key)', pick: 'title,url,points,author', node: { type: 'http', fields: { method: 'GET', url: 'https://hn.algolia.com/api/v1/search?query=opencode&tags=story' } } },
+
+  // Dev
+  { id: 'github', cat: 'Dev', label: 'GitHub issues', note: 'fine-grained PAT', pick: 'title,state,html_url,user.login', node: { type: 'http', fields: { method: 'GET', url: 'https://api.github.com/repos/{owner}/{repo}/issues', headers: '{"Accept":"application/vnd.github+json"}', auth: 'Bearer <pat>' } } },
+  { id: 'jsonplaceholder', cat: 'Dev', label: 'JSONPlaceholder', note: 'fake users/posts for testing (no key)', pick: 'name,email,username', node: { type: 'http', fields: { method: 'GET', url: 'https://jsonplaceholder.typicode.com/users' } } },
+
+  // Finance
+  { id: 'coingecko', cat: 'Finance', label: 'Crypto prices', note: 'CoinGecko markets (no key)', pick: 'name,symbol,current_price,market_cap_rank', node: { type: 'http', fields: { method: 'GET', url: 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100' } } },
+
+  // Productivity
+  { id: 'notion', cat: 'Productivity', label: 'Notion', note: 'internal integration secret', pick: 'object,id,created_time', node: { type: 'http', fields: { method: 'POST', url: 'https://api.notion.com/v1/search', headers: '{"Notion-Version":"2022-06-28","Content-Type":"application/json"}', auth: 'Bearer <integration-secret>', body: '{}' } } },
+  { id: 'airtable', cat: 'Productivity', label: 'Airtable', note: 'personal access token', pick: 'records', node: { type: 'http', fields: { method: 'GET', url: 'https://api.airtable.com/v0/{baseId}/{tableId}', auth: 'Bearer <personal-access-token>' } } },
+  { id: 'todoist', cat: 'Productivity', label: 'Todoist', note: 'API token', pick: 'content,due.date,priority,completed', node: { type: 'http', fields: { method: 'GET', url: 'https://api.todoist.com/rest/v2/tasks', auth: 'Bearer <api-token>' } } },
+
+  // Weather
+  { id: 'weather', cat: 'Weather', label: 'Weather (Open-Meteo)', note: 'no key needed', pick: 'current_weather.temperature,current_weather.windspeed,current_weather.weathercode', node: { type: 'http', fields: { method: 'GET', url: 'https://api.open-meteo.com/v1/forecast?latitude=40.7&longitude=-74.0&current_weather=true' } } },
+
+  // Comms
+  { id: 'email', cat: 'Comms', label: 'Email (IMAP/SMTP)', note: 'app password; server holds the secret', pick: 'from,subject,date', node: { type: 'email', fields: { action: 'fetch' } } },
+  { id: 'slack', cat: 'Comms', label: 'Slack webhook', note: 'incoming-webhook URL', pick: '', node: { type: 'http', fields: { method: 'POST', url: 'https://hooks.slack.com/services/<token>', headers: '{"Content-Type":"application/json"}', body: '{"text":"hello"}' } } },
+  { id: 'discord', cat: 'Comms', label: 'Discord webhook', note: 'webhook URL', pick: '', node: { type: 'http', fields: { method: 'POST', url: 'https://discord.com/api/webhooks/<id>/<token>', headers: '{"Content-Type":"application/json"}', body: '{"content":"hello"}' } } },
 ];
 
 // ---- header parsing for the http node --------------------------------------------------------------------------

@@ -31,11 +31,13 @@ import * as Relational from './relational.mjs';
 import * as Project from './project.mjs';
 import * as Opencode from './opencode.mjs';
 import * as Nodered from './nodered.mjs';
+import * as Worker from './worker.mjs';
 window.Automation=Automation;
 window.Relational=Relational;
 window.Project=Project;
 window.Opencode=Opencode;
 window.Nodered=Nodered;
+window.Worker=Worker;
 </script>
 <script>
 (function(){try{var t=localStorage.getItem('eodb-theme');if(t!=='light'&&t!=='dark')t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
@@ -452,7 +454,14 @@ function autoField(n,f){const k=f[0],kind=f[1]||'text',ph=f[2]||'',opts=f[3]||[]
  if(kind==='checkbox')return '<label class="cb"><input type="checkbox" data-k="'+k+'"'+(v?' checked':'')+'> '+esc(ph||k)+'</label>';
  return '<input data-k="'+k+'" value="'+esc(v)+'" placeholder="'+esc(ph)+'">';}
 function autoAdd(t){const n={id:'a'+(AUTO.n++),type:t,x:40,y:40+30*AUTO.nodes.length,fields:{}};AUTO.nodes.push(n);drawAuto();}
-function autoAddPreset(id){const c=(window.Automation&&window.Automation.CONNECTORS||[]).find(x=>x.id===id);if(!c)return;const n={id:'a'+(AUTO.n++),type:c.node.type,x:40+30*AUTO.nodes.length,y:40+30*AUTO.nodes.length,fields:{...(c.node.fields||{})}};AUTO.nodes.push(n);drawAuto();}
+function autoAddRecipe(id){const c=(window.Automation&&window.Automation.CONNECTORS||[]).find(x=>x.id===id);if(!c)return;
+ const SRC_OUT={rss:'items',ics:'events',email:'messages',http:'json',webhook:'data',text:'text',file:'bytes'};
+ const base=40+240*(AUTO.nodes.length%4),y=40+180*Math.floor(AUTO.nodes.length/4);
+ const src={id:'a'+(AUTO.n++),type:c.node.type,x:base,y:y,fields:{...(c.node.fields||{})}};AUTO.nodes.push(src);
+ let prev=src.id,prevPort=SRC_OUT[c.node.type]||'json';
+ if(c.pick){const t={id:'a'+(AUTO.n++),type:'transform',x:base+220,y:y,fields:{op:'pick',arg:c.pick}};AUTO.nodes.push(t);AUTO.edges.push({from:prev,fromPort:prevPort,to:t.id,toPort:'data'});prev=t.id;prevPort='rows';}
+ const s={id:'a'+(AUTO.n++),type:'store',x:base+440,y:y,fields:{name:c.label,ws:U.ws}};AUTO.nodes.push(s);AUTO.edges.push({from:prev,fromPort:prevPort,to:s.id,toPort:'rows'});
+ drawAuto();}
 /* add a feed/calendar from a URL — a real modal, not an inline input. */
 function openFeedModal(id){const isIcs=id==='ics';
  document.getElementById('sheet').innerHTML=
@@ -481,13 +490,6 @@ async function feedLand(id){const u=String((document.getElementById('feedurl')||
   else if(res){res.textContent='ran, but no table landed ('+(k&&k.error||'?')+')';res.style.color='var(--bad)';}
  }catch(e){if(res){res.textContent='failed: '+(e&&e.message||e);res.style.color='var(--bad)';}}
 }
-function connectPanel(){const C=(window.Automation&&window.Automation.CONNECTORS)||[];
- if(!C.length)return '';
- let h='<div class="card" style="margin-bottom:12px"><div class="fh"><b>'+ic('link-simple')+' Connect</b><span class="note">Bring in a mainstream app — one click, or drop a pre-filled node into the canvas.</span></div>';
- h+='<div class="types" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">';
- for(const c of C)h+='<div class="ty" onclick="'+(c.quick?'openFeedModal(\''+c.id+'\')':'autoAddPreset(\''+c.id+'\')')+'" title="'+(c.quick?'add a '+c.label+' URL':'add a pre-filled '+c.label+' node')+'">'+ic(c.icon||iconForConn(c.id))+'<div><b>'+esc(c.label)+'</b><small>'+esc(c.note)+'</small></div></div>';
- h+='</div></div>';
- return h;}
 function iconForConn(id){return {rss:'rss',ics:'calendar-blank',notion:'note-pencil',airtable:'table',github:'git-branch',todoist:'check-square',weather:'cloud',email:'envelope'}[id]||'plug';}
 function iconForNode(t){return {http:'link-simple',rss:'rss',file:'file-text',json:'file-code',transform:'magic-wand',store:'table',webhook:'arrow-right',model:'cpu',ics:'calendar-blank',email:'envelope',text:'text-aa'}[t]||'function';}
 /* the n8n-style node picker: one searchable, categorized list of every node type + connector. */
@@ -500,11 +502,13 @@ function nodePickFilter(){const q=String((document.getElementById('npq')||{}).va
  const D=autoDefs();const C=(window.Automation&&window.Automation.CONNECTORS)||[];
  let nodes=[];
  for(const [id,d] of Object.entries(D)){if(q&&!((id+' '+d.label).toLowerCase().includes(q)))continue;nodes.push({id,label:d.label,note:d.out&&d.out.length?('outputs: '+d.out.join(', ')):'',icon:iconForNode(id),kind:'node'});}
- let conns=[];
- for(const c of C){if(q&&!((c.id+' '+c.label+' '+c.note).toLowerCase().includes(q)))continue;conns.push({id:c.id,label:c.label,note:c.note,icon:iconForConn(c.id),quick:c.quick,kind:'connector'});}
+ const cats=new Map();
+ for(const c of C){if(q&&!((c.id+' '+c.label+' '+c.note).toLowerCase().includes(q)))continue;const k=c.cat||'Other';(cats.get(k)||cats.set(k,[]).get(k)).push(c);}
  const el=document.getElementById('nplist');if(!el)return;
- const row=(r)=>{const act=r.kind==='connector'?(r.quick?'openFeedModal(\''+r.id+'\')':'autoAddPreset(\''+r.id+'\')'):'autoAdd(\''+r.id+'\')';return '<div class="res" onclick="closeM();'+act+'">'+ic(r.icon)+'<div><b>'+esc(r.label)+'</b>'+(r.note?'<small>'+esc(r.note)+'</small>':'')+'</div></div>';};
- el.innerHTML=(nodes.length?'<div class="gt">NODES</div>'+nodes.map(row).join('')+'':'')+(conns.length?'<div class="gt">CONNECTORS</div>'+conns.map(row).join('')+'':'')||'<p class="note">No nodes match “'+esc(q)+'”.</p>';
+ const row=(r)=>{const act=r.kind==='connector'?(r.quick?'openFeedModal(\''+r.id+'\')':'autoAddRecipe(\''+r.id+'\')'):'autoAdd(\''+r.id+'\')';return '<div class="res" onclick="closeM();'+act+'">'+ic(r.icon)+'<div><b>'+esc(r.label)+'</b>'+(r.note?'<small>'+esc(r.note)+'</small>':'')+'</div></div>';};
+ let h=nodes.length?'<div class="gt">NODES</div>'+nodes.map(row).join(''):'';
+ for(const [cat,list] of cats)h+='<div class="gt">'+esc(cat.toUpperCase())+'</div>'+list.map(c=>row({id:c.id,label:c.label,note:c.note,icon:iconForConn(c.id),quick:c.quick,kind:'connector'})).join('');
+ el.innerHTML=h||'<p class="note">No nodes match “'+esc(q)+'”.</p>';
 }
 function openNrImport(){document.getElementById('sheet').innerHTML=
  '<div class="fh"><h2>Import a Node-RED flow</h2><button class="b g" style="margin-left:auto" onclick="closeM()">'+ic('x')+'</button></div>'+
@@ -1755,6 +1759,11 @@ function storebar(){let b=document.getElementById('storebar');const r=ENGINE.rep
  if(!bad&&!pending){if(b)b.remove();return;}
  if(!b){b=document.createElement('div');b.id='storebar';document.body.appendChild(b);}
  b.className='bad';b.textContent=bad?('Not saved: '+(r.lastError||(r.damaged+' damaged, '+r.gaps+' missing'))+(pending?' ('+pending+' waiting)':'')):('Saving… '+pending+' pending');}
-(async()=>{await boot();render();storebar();setInterval(storebar,1000);ocAutoRedeem();})();
+(async()=>{await boot();render();storebar();setInterval(storebar,1000);ocAutoRedeem();
+ // a tab is also a worker peer: every N seconds, fold the log and run any due poll/schedule trigger (while the tab is open).
+ // The headless node / server run the same loop always-on; the log's claims keep them from double-running.
+ const workerTick=()=>{if(window.ENGINE&&window.Worker){window.Worker.workerPass(window.ENGINE,{fetch:fetch,askModel:askModel}).catch(()=>{});}};
+ setInterval(workerTick,30000);
+})();
 
 </script></body></html>
