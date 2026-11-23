@@ -1527,8 +1527,8 @@ async function longform(topic,att,onChunk){const facts=retrieve(topic,att);
  if(sources.length){const sblock='\nSources:\n'+sources.map(s=>'- ['+s+']').join('\n');out.push(sblock);if(onChunk)onChunk(sblock);}
  return {answer:out.join(''),facts,sources,system:personaFor(topic),user:spec,checks:[{s:'void-satisfaction: '+leaves+' section(s), '+recCount+' re-grounded',standing:recCount===0?'supported':'partial'}]};}
 function fallbackAnswer(q,facts){return 'Local model not reachable, so here is what the fold says:\n\n'+facts.slice(0,12).join('\n');}
-// The judge is The Fold's own falsifier (fold-chat-falsify-answer.js), bundled with the language priors stubbed
-// (they load from Zenodotus, not here). Verdicts -> standings, exactly as the profile does.
+// The judge is The Fold's own falsifier (fold-chat-falsify-answer.js), bundled WITH the real Zenodotus/treebank
+// language priors (multilingual detection). Verdicts -> standings, exactly as the profile does.
 function gradeAnswer(answer,facts){const F=window.Falsify;if(!F||!F.falsifyAnswer||!facts||!facts.length)return[];
  const sents=(answer||'').split(/(?<=[.!?])\s+/).map(x=>x.trim()).filter(Boolean);
  const sources=facts.map((f,i)=>({ref:'src'+i,title:'src'+i,url:'',text:f}));
