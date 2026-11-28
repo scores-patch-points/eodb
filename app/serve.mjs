@@ -34,7 +34,7 @@ const CORS = {
   'access-control-allow-headers': '*',
   'access-control-max-age': '600',
 };
-const MIME = { '.html': 'text/html; charset=utf-8', '.mjs': 'text/javascript', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.map': 'application/json' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.md': 'text/plain; charset=utf-8', '.mjs': 'text/javascript', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.map': 'application/json' };
 const send = (res, code, body, type = 'text/plain') => { res.writeHead(code, { ...CORS, 'content-type': type }); res.end(body); };
 
 /** proxy /oc/* to the OpenCode server, injecting Basic auth and streaming (SSE) responses through unchanged. */

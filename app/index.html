@@ -10,6 +10,7 @@
 <script type="module">
 import {openSpace,parseJoin} from './engine.mjs';
 import {fetchSharedFile} from './net.mjs';
+import {APPS as INSTALL_APPS,ROUTES as INSTALL_ROUTES,contract as installContract} from './installs.mjs';window.EODB_INSTALLS={apps:INSTALL_APPS,routes:INSTALL_ROUTES,contract:installContract()};
 import * as B from './vendor/pharos/browser-store.mjs';
 const cells=await (await fetch('./vendor/pharos/cells.json')).json();
 const names=await (await fetch('./vendor/node-names.json')).json().catch(()=>[]);
@@ -726,8 +727,17 @@ function vNetwork(){
   let h=crumb(ic('git-branch')+' Network')+'<h1>Network</h1><p class="sub">Your space, the devices in it, and the routes that connect them. Each device carries a human-readable name and its UUID.</p>';
   h+='<div class="card"><div class="net-canvas" id="net-canvas"></div></div>';
   h+='<div class="note" style="margin-top:10px">This device — <b>'+nodeLabel(ENGINE.deviceName)+'</b> · UUID <span class="tag">'+esc(ENGINE.writer)+'</span>.</div>';
+  h+=vInstalls();
   return h;
 }
+/* the kinds of app that can hold this same space (app/installs.mjs; the full instructions are app/INSTALL.md) */
+function vInstalls(){const I=window.EODB_INSTALLS;if(!I)return '';
+ let h='<h2 style="margin-top:22px">Ways to run this space</h2><p class="sub">Every one of these holds the same log, sealed the same way and folded the same way, so what one writes the others read. They differ only in where they run and which routes they can use. <a href="./INSTALL.md" target="_blank" rel="noopener">Full install instructions</a>.</p>';
+ for(const a of I.apps){const rt=a.speaks.length?'dials '+a.speaks.join(', '):a.serves.length?'hosts '+a.serves.join(', '):'no routes of its own';
+  h+='<div class="card" style="margin-top:8px"><div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap"><b>'+esc(a.label)+'</b><span class="tag">'+esc(a.status)+'</span><span class="note">'+esc(a.runtime)+' · '+esc(rt)+'</span></div>'+
+   '<div class="note" style="margin-top:4px">'+esc(a.what)+'</div><pre style="margin:6px 0 0;white-space:pre-wrap;word-break:break-word;font-size:12px">'+esc(a.run[0])+'</pre></div>';}
+ h+='<div class="card" style="margin-top:12px"><b>Why they are commensurable</b><ul style="margin:6px 0 0 18px">'+I.contract.map(c=>'<li><b>'+esc(c.what)+'.</b> '+esc(c.how)+'</li>').join('')+'</ul></div>';
+ return h;}
 /* ================= render ================= */
 function render(){render0();narrowNav();}
 let NAVOPEN=false;
