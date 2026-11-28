@@ -24,7 +24,7 @@ test('2. every route scheme the engine and the Node apps build in is in the cata
   const known = new Set(ROUTES.map((r) => r.scheme));
   for (const s of engine) assert.ok(known.has(s), `engine route ${s} is not in the catalog`);
   const headless = read('app/headless.mjs'), server = read('app/server.mjs');
-  const nodeOnly = ['direct', 'reticulum'];
+  const nodeOnly = ['direct', 'reticulum', 'lxmf'];
   for (const s of nodeOnly) assert.ok(headless.includes(`${s}: `) && known.has(s), `${s} is a headless route`);
   const byId = Object.fromEntries(APPS.map((a) => [a.id, a]));
   assert.deepEqual(new Set(byId['web-app'].speaks), new Set(engine), 'the browser dials exactly the engine\'s built-in routes');
