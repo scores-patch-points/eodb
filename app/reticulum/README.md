@@ -40,10 +40,34 @@ H.264 clips (640x360, ffmpeg testsrc2) added to a space by a founder and synced 
 
 Read it this way: a file is ONE sealed object, so playback can start only once the whole file has arrived; "x realtime" is clip length over arrival time, not a streaming rate. Publish includes the first dial (path request and Link setup), which varied 13 to 34 s across runs. Before parts were added, a 15.7 MB clip never arrived: one frame of it exceeded the bridge's 16 MiB cap. The adapter now sends objects in 1 MiB parts (`?mtu=` to change), and the 31 MB clip crosses. Falsifier for the table: a clip whose received hash differs or that ffmpeg cannot decode (the script exits 1). Loopback numbers say nothing about LoRa: at LoRa rates (hundreds of bytes per second to a few kB/s) a 1 MB clip takes minutes to hours; video belongs on the Wi-Fi/TCP/I2P segments of a Reticulum network.
 
+## Using the Reticulum a person already runs (shared instance)
+Started without `--rns-config`, `bridge.py` and `lxmf_bridge.py` use `~/.reticulum`. If `rnsd`, Sideband or MeshChat is already running there, they ATTACH to it and use every interface it has (Wi-Fi discovery, TCP hubs, an RNode radio). `--require-shared` makes that a requirement: with no running instance the bridge exits 3 and says what to start. Each bridge logs `instance: attached | shared-host | standalone`. Tested (`reticulum.test.mjs` 4-5): two real `rnsd` daemons, both bridges attached, a space synced through them; and the refusal. Not tested: Sideband or MeshChat as the host (rnsd stands in for them); on Android apps are sandboxed, so Sideband's instance is likely not reachable by another app.
+
+## LXMF: store-and-forward sync, and the phone as a remote control
+`lxmf_bridge.py` is one daemon per node with its own LXMF address (the message layer of Sideband, MeshChat and NomadNet). Route: `lxmf:<a member's LXMF address>?tag=<32 hex>`, taken only from a share link (`route-policy.mjs` refuses it from the log). The tag is a secret (`newLxmfTag()` in `app/tcp.mjs`); a daemon stores an object only if it carries a tag the node holds, a valid signature, and fits the limits (`--max-object` KiB, `--max-store` MiB). Objects go in 128 KiB parts (LXMF propagation carries 256 KB per message).
+- **Many members.** A member's first contact introduces it (`eodb-hi/1`); the receiver sends everything the space holds. A newly stored object is forwarded once to every other known member, and create-only storage stops loops. Members reach each other through anyone.
+- **Offline members.** With `--propagation-node <hash>`, objects for an offline member wait at an LXMF propagation node and are collected when it returns (`--sync-every`). Any LXMF propagation node works; `--propagation-node-enable` makes this daemon one.
+- **Remote control.** `node app/headless.mjs ... --lxmf-bot --bot-allow <your LXMF address>`. From Sideband (or `lxmf_send.py`), message the node: `help`, `status`, `recent [n]`, `note <text>` (a paragraph in a "Notes from LXMF" document, attributed to the sender). It answers only listed addresses and is silent to everyone else. The commands are a fixed table: the first word must match exactly, and the rest is stored verbatim, never interpreted.
+- **Signatures.** A message from a sender we have not yet heard announce is held, not accepted: the daemon asks for the sender's identity, verifies the same bytes again, and drops them after 120 s if it cannot.
+- **Joining** over LXMF retries until the backfill arrives ("not published yet" until then); measured 37-73 s on loopback.
+
+Tested (`app/test/lxmf.test.mjs`, `rns` 1.6.1, `lxmf` 1.3.1; four real processes on one machine: a propagation node and transport hub P, members A and B, an outsider O):
+1. B joins A's space over LXMF; objects arrive in B's own store, ciphertext only on disk.
+2. B's daemon is stopped; A writes; B restarts and collects the entry from P (16-22 s after restarting).
+3. O, without the tag, sends objects to A: dropped, no new directory. An object over the size limit: refused.
+4. An allow-listed client gets `status`, adds a `note` (an entry in the space, attributed), and an unknown command is named; a stranger reaches the node and gets no reply.
+
+Run the whole app gate serially: `EODB_RNS_PYTHON=<python with rns, lxmf> node --test --test-force-exit --test-concurrency=1 app/test/*.test.mjs` (163/163, 192 s on 4 cores, 2026-11-28). In parallel, LXMF's proof-of-work stamps use every core and starve the Reticulum suite into timeouts; that is a finding about stamping, not a flaky test to retry.
+
+Falsified (2026-11-28; each mutant applied, the suite run, the file restored): daemon accepts objects for a space it does not hold -> test 3 fails; daemon never collects from the propagation node -> test 2 fails (and 1, since every object goes through the node); bot answers anyone -> test 4 fails; no object size limit -> test 3 fails; the bridge's refusal without a shared instance broken -> reticulum test 5 fails. One mutant SURVIVED: disabling the bridge's post-start "not attached" check, because Reticulum 1.6.1 already raises before it; that line is marked in bridge.py as untested backup.
+
+Bugs found while making these pass, all fixed: Reticulum logged to stdout and corrupted the bridges' machine-read first line (now stderr); announces sent before an interface was up reached no one (now repeated at 2, 5, 10, 20, 35 s and on each new client); LXMF fails a propagated message for good if the propagation node's stamp cost is not yet known (now held until its announce is heard); replies to a phone went through the propagation node that the phone never collects from (text now goes direct first).
+
 ## Not tested, not built
 - True streaming (play while arriving): parts arrive in order, but the engine delivers a file only when complete. Not built.
 - Any real radio or multi-hop path: no LoRa/RNode, no transport node, no second host. Frame sizes and latency over a slow link are unmeasured; a frame is one Resource with its handshake, which is likely costly at LoRa speeds. `politeCarrier`/`chunkedCarrier` are not composed here.
 - Announce load as the network grows (the bridge re-announces every 900 s by default).
 - The store is in memory (a restart empties it) and is a single serving peer, not a mesh of equals. Many-to-many is the next step: each node serving and dialing the others, with announced routes recorded as locator entries.
-- `--allow` is written but has no test.
+- `--allow` (bridge.py) is written but has no test.
+- LXMF: no forged-signature test (an unverifiable message is held and then dropped, but no test forges one); no test with Sideband itself (`lxmf_send.py` stands in); propagation-node stamp costs at default (16) were fast here, slower on a phone; no measure of many members (only two plus an outsider).
 - Python is required beside Node; the browser app cannot use this route (it needs the bridge).

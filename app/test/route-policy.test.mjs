@@ -20,7 +20,7 @@ const mk = () => ({ backend: B.memoryBackend(), blobBackend: B.memoryBackend() }
 test('1. the policy refuses internal hosts, raw sockets, credentials and bridge overrides from the log, and accepts a public relay', () => {
   for (const h of ['127.0.0.1', 'localhost', '10.1.2.3', '172.16.0.1', '192.168.0.9', '169.254.169.254', '100.64.0.1', '0', '2130706433', '0x7f000001', '::1', 'fd00::1', 'printer', 'db.internal']) assert.ok(internalHost(h), h);
   for (const h of ['relay.example.org', '203.0.113.9', '8.8.8.8']) assert.ok(!internalHost(h), h);
-  for (const u of ['direct:tcp://10.0.0.5:22', 'relay:http://169.254.169.254/latest', 'relay:http://127.0.0.1:8853', 'relay:https://user:pw@relay.example.org', 'file:///etc/passwd', 'reticulum:' + 'ab'.repeat(16) + '?bridge=10.0.0.1:7770', 'reticulum:nothex'])
+  for (const u of ['direct:tcp://10.0.0.5:22', 'relay:http://169.254.169.254/latest', 'relay:http://127.0.0.1:8853', 'relay:https://user:pw@relay.example.org', 'file:///etc/passwd', 'reticulum:' + 'ab'.repeat(16) + '?bridge=10.0.0.1:7770', 'reticulum:nothex', 'lxmf:' + 'ab'.repeat(16) + '?tag=' + 'cd'.repeat(16)])
     assert.equal(vetRoute(u, { origin: 'log' }).ok, false, u);
   for (const u of ['relay:https://relay.example.org', 'mailbox:https://mail.example.org#tok', 'reticulum:' + 'ab'.repeat(16)]) assert.equal(vetRoute(u, { origin: 'log' }).ok, true, u);
   assert.equal(vetRoute('relay:http://127.0.0.1:8853', { origin: 'link' }).ok, true, 'the person chose a link route: dialed as given');
