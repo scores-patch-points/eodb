@@ -49,3 +49,6 @@ Tested: 12 Node tests against a real HTTP relay with fully separate storage per 
 
 ## Mailbox route
 `mailbox:<url>#<token>` is a second kind of route (after `relay:`), for a mailbox server (`app/mailbox/mailbox.mjs`, with a Linux deploy kit in `app/deploy/mailbox/`). It adds CORS (`--cors`), a token from the environment, a refusal to read oversized uploads, and a start-up fix for symlinked paths to the original server file (six marked changes; provenance in the file header). File objects are named by a **keyed hash per space** (`blob/<hmac>`): two spaces on one server never collide, and the server cannot see file hashes. Tested in Node against the real server (10 tests) and in a real browser across two origins (cross-origin PUT with preflight and bearer token, private reads, both directions, files). Not tested: a real server behind Cloudflare.
+
+## Reticulum route
+`reticulum:<destination hash>` is a third kind of route, through a local Python bridge (`app/reticulum/`). Tested in Node against two real Reticulum instances on one machine; not tested over radio or a second host. Details and limits: `app/reticulum/README.md`.
