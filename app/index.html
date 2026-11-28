@@ -8,8 +8,9 @@
 <script type="module">import * as Murch from './vendor/pacing.js';window.Murch=Murch;</script>
 <script src="./config.js" onerror="void 0"></script>
 <script type="module">
-import {openSpace} from './engine.mjs';
+import {openSpace,parseJoin} from './engine.mjs';
 import {fetchSharedFile} from './net.mjs';
+import {APPS as INSTALL_APPS,ROUTES as INSTALL_ROUTES,contract as installContract} from './installs.mjs';window.EODB_INSTALLS={apps:INSTALL_APPS,routes:INSTALL_ROUTES,contract:installContract()};
 import * as B from './vendor/pharos/browser-store.mjs';
 const cells=await (await fetch('./vendor/pharos/cells.json')).json();
 const names=await (await fetch('./vendor/node-names.json')).json().catch(()=>[]);
@@ -30,7 +31,9 @@ const open=async(opts={})=>{const space=opts.space||spaceName();const log=await 
 import * as KhoraText from './vendor/khora-text.js';window.KhoraText=KhoraText;
 import {makeMeasuredLoop} from './measured-loop.mjs';window.makeMeasuredLoop=makeMeasuredLoop;
 window.PERSONA_RULES=await (await fetch('./persona/rules.json')).json().catch(()=>[]);
-window.__EODB_BOOT={join,file,open,keymodeFor};
+// the space a share link names (the founder's own name for it); null for a link made before links carried it, or a malformed one (the open reports that)
+const joinSpace=()=>{try{return join&&parseJoin(join).space||null;}catch{return null;}};
+window.__EODB_BOOT={join,file,open,keymodeFor,joinSpace};
 </script>
 <script type="module">
 import * as Automation from './automation.mjs';
@@ -724,8 +727,17 @@ function vNetwork(){
   let h=crumb(ic('git-branch')+' Network')+'<h1>Network</h1><p class="sub">Your space, the devices in it, and the routes that connect them. Each device carries a human-readable name and its UUID.</p>';
   h+='<div class="card"><div class="net-canvas" id="net-canvas"></div></div>';
   h+='<div class="note" style="margin-top:10px">This device — <b>'+nodeLabel(ENGINE.deviceName)+'</b> · UUID <span class="tag">'+esc(ENGINE.writer)+'</span>.</div>';
+  h+=vInstalls();
   return h;
 }
+/* the kinds of app that can hold this same space (app/installs.mjs; the full instructions are app/INSTALL.md) */
+function vInstalls(){const I=window.EODB_INSTALLS;if(!I)return '';
+ let h='<h2 style="margin-top:22px">Ways to run this space</h2><p class="sub">Every one of these holds the same log, sealed the same way and folded the same way, so what one writes the others read. They differ only in where they run and which routes they can use. <a href="./INSTALL.md" target="_blank" rel="noopener">Full install instructions</a>.</p>';
+ for(const a of I.apps){const rt=a.speaks.length?'dials '+a.speaks.join(', '):a.serves.length?'hosts '+a.serves.join(', '):'no routes of its own';
+  h+='<div class="card" style="margin-top:8px"><div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap"><b>'+esc(a.label)+'</b><span class="tag">'+esc(a.status)+'</span><span class="note">'+esc(a.runtime)+' · '+esc(rt)+'</span></div>'+
+   '<div class="note" style="margin-top:4px">'+esc(a.what)+'</div><pre style="margin:6px 0 0;white-space:pre-wrap;word-break:break-word;font-size:12px">'+esc(a.run[0])+'</pre></div>';}
+ h+='<div class="card" style="margin-top:12px"><b>Why they are commensurable</b><ul style="margin:6px 0 0 18px">'+I.contract.map(c=>'<li><b>'+esc(c.what)+'.</b> '+esc(c.how)+'</li>').join('')+'</ul></div>';
+ return h;}
 /* ================= render ================= */
 function render(){render0();narrowNav();}
 let NAVOPEN=false;
@@ -1455,11 +1467,17 @@ function askPassphrase(kind,premsg){return new Promise(resolve=>{
  const sk=document.getElementById('bskip');if(sk)sk.onclick=()=>resolve({skip:true});
 });}
 function failOpen(){const err=window.__ENGINE_ERROR;const msg=err&&err.message||'unknown problem';document.body.innerHTML='<div style="max-width:520px;margin:12vh auto;padding:0 18px;font:15px/1.5 system-ui"><h2>Couldn\'t open this space</h2><p>'+esc(msg)+'</p><p>Check the link and your connection, then reload this page.</p></div>';throw new Error('open failed: '+msg);}
+/* A joined space is stored under the name its founder gave it, made unique on this device so it never lands in (and is never hidden by) a local space
+   of the same name. A link with no name falls back to the current space, as before. */
+async function joinTarget(B){const base=B.joinSpace&&B.joinSpace();if(!base)return null;
+ const taken=async n=>listSpaces().includes(n)||(await B.keymodeFor(n))!=null;
+ let n=base,i=1;while(await taken(n))n=base+(i++===1?' (shared)':' (shared '+i+')');return n;}
+function rememberSpace(n,prev){try{const s=listSpaces();if(!s.length&&prev&&prev!==n)s.push(prev);if(!s.includes(n)){s.push(n);localStorage.setItem('eodb-spaces',JSON.stringify(s));}localStorage.setItem('eodb-space',n);}catch{}}
 async function boot(){
  const B=await waitBoot();
  if(B.file){return openSharedFile(B.file);}
  if(!B.join&&!isDemo()&&new URLSearchParams(location.search).get('demo')==='titanic'){enterDemo();return new Promise(()=>{});}
- if(B.join){bootAnim('join');ENGINE=await B.open({});}
+ if(B.join){bootAnim('join');const prev=currentSpace(),hadPrev=(await B.keymodeFor(prev))!=null;const sp=await joinTarget(B);ENGINE=await B.open(sp?{space:sp}:{});if(!ENGINE)failOpen();if(sp)rememberSpace(sp,hadPrev?prev:null);}
  else if(isDemo()){bootAnim('setup');ENGINE=await B.open({});if(!ENGINE)failOpen();}   // public sources only: no password to ask for
  else{
   const keymode=await B.keymodeFor();
