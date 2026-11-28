@@ -92,7 +92,7 @@ export function parseJoin(link) {
   const m = /^eodb-join:1:([A-Za-z0-9_-]+)$/.exec(String(link).trim()); if (!m) throw new core.PharosError('BAD_JOIN', 'not a share link');
   let b; try { b = JSON.parse(unb64u(m[1])); } catch (e) { throw new core.PharosError('BAD_JOIN', 'not a share link (malformed)'); }
   if (b && typeof b.relay === 'string' && !b.routes) b.routes = [`relay:${b.relay}`];
-  if (!b || !Array.isArray(b.routes) || !b.routes.length || !b.routes.every((r) => typeof r === 'string' && /^[a-z]+:/.test(r)) || !/^[0-9a-f]{64}$/.test(b.key || '') || !/^[0-9a-f]{64}$/.test(b.root || '') || typeof b.invite !== 'string') throw new core.PharosError('BAD_JOIN', 'not a share link (incomplete)');
+  if (!b || !Array.isArray(b.routes) || !b.routes.length || !b.routes.every((r) => typeof r === 'string' && /^[a-z]+:/.test(r)) || !/^[0-9a-f]{64}$/.test(b.key || '') || !/^[0-9a-f]{64}$/.test(b.root || '') || typeof b.invite !== 'string' || (b.space !== undefined && (typeof b.space !== 'string' || !b.space))) throw new core.PharosError('BAD_JOIN', 'not a share link (incomplete)');
   return b;
 }
 
@@ -107,7 +107,7 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
   const seedOf = async (label) => { let s = await store.getSecret(label); let key; if (s) key = I.keyFromSeed(hex(s)); else { key = I.generateKey(); await store.putSecret(label, unhex(key.priv.slice(0, 64))); } return key; };
   const te = new TextEncoder(), td = new TextDecoder();
   let share = null; const savedShare = await store.getSecret('share'); if (savedShare) share = JSON.parse(td.decode(savedShare));
-  if (!share && join) { const j = parseJoin(join); share = { role: 'guest', routes: j.routes, key: j.key, root: j.root, invite: j.invite }; await store.putSecret('share', te.encode(JSON.stringify(share))); }
+  if (!share && join) { const j = parseJoin(join); share = { role: 'guest', routes: j.routes, key: j.key, root: j.root, invite: j.invite, ...(j.space ? { space: j.space } : {}) }; await store.putSecret('share', te.encode(JSON.stringify(share))); }
   const guest = !!share && share.role === 'guest';
   const root = guest ? null : await seedOf('root-seed'), dev = await seedOf('device-seed');
   const devId = dev.pub.slice(0, 8), tabId = tab || globalThis.crypto.getRandomValues(new Uint8Array(2)).reduce((s, b) => s + b.toString(16).padStart(2, '0'), '');
@@ -120,7 +120,11 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
   deviceName = td.decode(deviceName);
 
   // A guest does not make a frame, schema or account: it receives the founder's (the log is the database), then takes its own grant from the invite key.
-  const h = core.open(name, { writer, store, frame: !guest });
+  // The log's name is part of what every entry is verified against, so a guest must open the log under the FOUNDER's name, which the link carries
+  // (`space`). Where it is stored on this device (`name`) is the caller's choice, so joining a space called "Work" never collides with a local "Work".
+  // A link made before the name was carried has no `space`: the guest falls back to its own name, as before.
+  const logName = (guest && share.space) || name;
+  const h = core.open(logName, { writer, store, frame: !guest });
   const first = !guest && !core.entries(h).some((e) => e.kind === 'capability');
   if (!guest) {
     I.ensureKinds(h); A.ensureKinds(h);
@@ -250,15 +254,16 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
   if (guest) {
     // receive the founder's frame, kinds and grants first; then take this device's own grant from the invite key.
     // Another device may not have published, or the relay may lag a moment, so retry a few times before giving up.
-    let frame = false, routeErr = null;
+    let frame = false, routeErr = null, quarantinedSeen = 0;
     for (let attempt = 0; attempt < 6 && !frame; attempt++) {
       const r = await syncOnce();
-      routeErr = r && r.error ? r.error : null;
+      routeErr = r && r.error ? r.error : null; quarantinedSeen += (r && r.quarantined) || 0;
       frame = core.entries(h).some((e) => e.kind === 'frame');
       if (!frame && attempt < 5) await new Promise((res) => setTimeout(res, 500));
     }
     if (!frame) {
       if (routeErr) throw new core.PharosError('NO_ROUTE', `cannot reach the shared space: ${routeErr}`);
+      if (quarantinedSeen && !share.space) throw new core.PharosError('NOT_VERIFIED', `the shared space was found but none of it could be verified here. The link does not say which space it is (it was made by an older version), so this device opened it as "${name}": ask for a new link`);
       throw new core.PharosError('NOT_PUBLISHED', 'the shared space has not been published yet: ask the person who shared it to open it once, then try again');
     }
     if (!core.fold(h).entries.some((e) => e.kind === 'capability' && e.body && e.body.subject === dev.pub)) {
@@ -279,7 +284,7 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
 
   blobApiRef = blobApi;
   const space = {
-    writer, rootPub: root ? root.pub : share.root, devicePub: dev.pub, name, blobs: blobApi, sha, first,
+    writer, rootPub: root ? root.pub : share.root, devicePub: dev.pub, name, logName, blobs: blobApi, sha, first,
     /** weave one page operation; returns it in the page's shape. Sync: the entry exists at once; signing and saving follow. `of` links it causally. */
     append(op, body, of) {
       if (!OPS[op]) throw new core.PharosError('UNKNOWN_OP', `unknown operation "${op}"`);
@@ -304,11 +309,11 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
       if (guest) throw new core.PharosError('NOT_FOUNDER', 'only the device that made the space can create share links');
       if (!share || !share.inviteEntry) {      // first time, or after the old link was revoked: a fresh invite (same space key and routes)
         const inv = A.createInvite(h, root, { scope: '*', rights: ['read', 'write'], writer: 'guest.*' });
-        share = { role: 'founder', routes: [...(share ? share.routes : []), ...rs.filter((r) => !share || !share.routes.includes(r))], key: await spaceKeyHexOf(), root: root.pub, invite: inv.link, inviteEntry: inv.entryId };
+        share = { role: 'founder', routes: [...(share ? share.routes : []), ...rs.filter((r) => !share || !share.routes.includes(r))], key: await spaceKeyHexOf(), root: root.pub, invite: inv.link, inviteEntry: inv.entryId, space: logName };
       } else { for (const r of rs) if (!share.routes.includes(r)) share.routes.push(r); }
       for (const r of share.routes) if (!learned().includes(r)) Loc.announce(h, { scope: 'space', uri: r });   // the routes become data in the log: any device that has one learns the rest
       await store.putSecret('share', te.encode(JSON.stringify(share))); signNow(); await syncOnce(); startSync(syncMs);
-      return `eodb-join:1:${b64u(JSON.stringify({ v: 1, routes: share.routes, key: share.key, root: share.root, invite: share.invite }))}`;
+      return `eodb-join:1:${b64u(JSON.stringify({ v: 1, space: logName, routes: share.routes, key: share.key, root: share.root, invite: share.invite }))}`;
     },
     /** suggest a route to the other members: it becomes a locator entry in the log. Others dial it only if the route policy accepts it and the author is a verified non-guest writer. */
     announceRoute(uri) { Loc.announce(h, { scope: 'space', uri: String(uri) }); signNow(); return true; },

@@ -125,3 +125,23 @@ test('12. two spaces on ONE server holding the same file each get their own copy
   assert.ok(names.every((n) => !n.includes(h)), 'no object name contains the file hash');
 });
 
+
+test('13. the link names the space: a guest joins a founder whose space has another name than the guest\'s own (e.g. "Titanic demo" into a device on "Work")', async () => {
+  const r = await relay(); const A = await openSpace({ name: 'Titanic demo', ...mk(), cells, autosync: false }); opened.push(A);
+  for (const [op, body] of BASE) A.append(op, body);
+  const link = await A.share({ routes: [`relay:${r.url}`] }); await A.settle();
+  assert.equal(parseJoin(link).space, 'Titanic demo', 'the link carries the founder\'s space name');
+  const G = await open(mk(), { name: 'Work (shared)', join: link });   // stored under any local name
+  assert.equal(G.role, 'guest'); assert.equal(G.logName, 'Titanic demo');
+  assert.deepEqual(G.view().map((e) => e.op), BASE.map((b) => b[0]));
+  G.append('cell=', { tb: 't1', rid: 'r1', fid: 'f1', v: 'from guest' }); await G.syncOnce(); await A.syncOnce(); assert.equal(cell(A), 'from guest');
+});
+
+test('14. a link from before the name was carried still joins under a matching name, and under a different one says why it cannot', async () => {
+  const r = await relay(); const A = await openSpace({ name: 'Other', ...mk(), cells, autosync: false }); opened.push(A);
+  for (const [op, body] of BASE) A.append(op, body);
+  const b = parseJoin(await A.share({ routes: [`relay:${r.url}`] })); await A.settle(); delete b.space;
+  const old = `eodb-join:1:${Buffer.from(JSON.stringify(b)).toString('base64url')}`;
+  const ok = await open(mk(), { name: 'Other', join: old }); assert.equal(ok.role, 'guest');
+  await assert.rejects(open(mk(), { name: 'Work', join: old }), (e) => e.code === 'NOT_VERIFIED' && /older version/.test(e.message));
+});
