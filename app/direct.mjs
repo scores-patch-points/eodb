@@ -15,7 +15,10 @@ const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
 export function directCarrier(channel) {
   let next = 0; const pending = new Map();
   channel.onMessage((text) => { let m; try { m = JSON.parse(text); } catch { return; } const p = pending.get(m.i); if (p) { pending.delete(m.i); p(m); } });
-  const rpc = (req) => new Promise((res, rej) => { const i = ++next; pending.set(i, (m) => m.t === 'err' ? rej(Object.assign(new Error(m.m), { code: m.c })) : res(m)); channel.send(JSON.stringify({ i, ...req })); });
+  let closed = false;
+  // a channel that can report its end (tcp.mjs) fails every pending call at once, instead of leaving it to hang
+  if (typeof channel.onClose === 'function') channel.onClose(() => { closed = true; for (const [, p] of pending) p({ t: 'err', m: 'direct channel closed' }); pending.clear(); });
+  const rpc = (req) => new Promise((res, rej) => { if (closed) return rej(new Error('direct channel closed')); const i = ++next; pending.set(i, (m) => m.t === 'err' ? rej(Object.assign(new Error(m.m), { code: m.c })) : res(m)); channel.send(JSON.stringify({ i, ...req })); });
   return {
     channel,
     async list() { const m = await rpc({ t: 'list' }); return m.v; },

@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openSpace } from './engine.mjs';
 import { fsBackend } from './fs-backend.mjs';
-import { directAdapter } from './tcp.mjs';
+import { directAdapter, reticulumAdapter } from './tcp.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const cells = JSON.parse(fs.readFileSync(path.join(here, 'vendor', 'pharos', 'cells.json'), 'utf8'));
@@ -34,6 +34,7 @@ const space = await openSpace({
   cells, names, passphrase,
   join: flags.join || undefined,
   autosync: true, syncMs: Number(flags.syncMs || 5000),
+  adapters: { direct: directAdapter, reticulum: reticulumAdapter },   // Node-only routes: direct:tcp://host:port, reticulum:<destination hash>
 });
 
 if (space.role !== 'guest' && routes.length) {

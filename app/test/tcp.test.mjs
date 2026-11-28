@@ -43,3 +43,13 @@ test('3. the direct adapter parses direct:tcp:// and one server serves many peer
   await assert.rejects(directAdapter('direct:webrtc:foo'), /unknown direct transport/);
   await server.close(); c1.close(); c2.close();
 });
+
+test('4. a peer that resets the socket fails pending calls at once and does not crash the process', async () => {
+  const server = await tcpServer({ port: 0 }, (ch) => { ch.onMessage(() => ch.close()); });   // answers nothing: drops the connection on the first request
+  const c = directCarrier(await tcpChannel('127.0.0.1', server.port));
+  const t0 = Date.now();
+  await assert.rejects(c.list(), /direct channel closed/);
+  assert.ok(Date.now() - t0 < 2000, 'failed fast, not by timeout');
+  await assert.rejects(c.get('x'), /direct channel closed/, 'later calls fail too');
+  await server.close();
+});

@@ -13,6 +13,7 @@ import * as A from './vendor/pharos/access.mjs';
 import * as C from './vendor/pharos/carrier.mjs';
 import * as T from './vendor/pharos/transport.mjs';
 import * as Loc from './vendor/pharos/locator.mjs';
+import { vetRoute, hostsOf } from './route-policy.mjs';
 import { gate } from './vendor/pharos/gate.mjs';
 import * as N from './net.mjs';
 import * as G from './graph.mjs';
@@ -170,13 +171,28 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
     await store.putSecret('space-key', te.encode(spaceKeyHex));
     return spaceKeyHex;
   };
+  // A locator is DATA in a log every member can write to, so it is not trusted to name where this node connects. `learned()` is every announced uri (used to
+  // avoid re-announcing); `learnedVetted()` is what may be DIALED: announced by a verified, non-guest writer, and passing the route policy (route-policy.mjs).
   const learned = () => { try { return Loc.locators(h, 'space').map((l) => l.uri); } catch (err) { return []; } };
+  const refusedLearned = new Map();
+  const learnedVetted = () => {
+    const out = [], by = new Map(core.entries(h).filter((e) => e.kind === 'locator').map((e) => [e.id, e]));
+    let locs = []; try { locs = Loc.locators(h, 'space'); } catch (err) { /* none */ }
+    const trusted = hostsOf(share ? share.routes : []);
+    for (const l of locs) {
+      if (share && share.routes.includes(l.uri)) continue;                                  // already a link route: dialed as the person chose it
+      const e = by.get(l.id), why = !e ? 'unknown author' : String(e.by).startsWith('guest.') ? 'announced by a guest' : !okSet.has(e.id) ? 'announcement not verified by an owner-rooted grant' : (vetRoute(l.uri, { origin: 'log', trusted }).why || null);
+      if (why) refusedLearned.set(l.uri, why); else { refusedLearned.delete(l.uri); out.push(l.uri); }
+    }
+    for (const [uri, why] of refusedLearned) routeHealth.set(uri, { ok: false, error: `refused: ${why}`, at: Date.now() });
+    return out;
+  };
   const track = (uri, c) => { const mark = (ok, err) => routeHealth.set(uri, { ok, error: ok ? null : String(err && err.message || err), at: Date.now() });
     return { list: async () => { try { const r = await c.list(); mark(true); return r; } catch (e) { mark(false, e); throw e; } }, get: async (n) => { try { const r = await c.get(n); mark(true); return r; } catch (e) { mark(false, e); throw e; } }, putNew: async (n, b) => { try { const r = await c.putNew(n, b); mark(true); return r; } catch (e) { mark(false, e); throw e; } } }; };
   let blobApiRef = null;
   const syncState = { timer: null, busy: false, last: null, error: null, quarantined: 0, known: new Set(), policy: null };
   async function routes() {
-    const uris = [...new Set([...(share ? share.routes : []), ...learned()])], out = [];
+    const uris = [...new Set([...(share ? share.routes : []), ...learnedVetted()])], out = [];
     const key = share ? await getKey() : null;
     for (const uri of uris) { const scheme = uri.split(':')[0]; const make = rawAdapters[scheme]; if (!make) continue; try { const raw = await make(uri); out.push({ uri, raw, carrier: track(uri, key ? N.sealedCarrier(raw, key) : raw) }); } catch (e) { routeHealth.set(uri, { ok: false, error: String(e.message || e), at: Date.now() }); } }
     return out;
@@ -294,6 +310,8 @@ export async function openSpace({ name = 'eodb', backend, blobBackend, cells, ta
       await store.putSecret('share', te.encode(JSON.stringify(share))); signNow(); await syncOnce(); startSync(syncMs);
       return `eodb-join:1:${b64u(JSON.stringify({ v: 1, routes: share.routes, key: share.key, root: share.root, invite: share.invite }))}`;
     },
+    /** suggest a route to the other members: it becomes a locator entry in the log. Others dial it only if the route policy accepts it and the author is a verified non-guest writer. */
+    announceRoute(uri) { Loc.announce(h, { scope: 'space', uri: String(uri) }); signNow(); return true; },
     /** stop admitting new devices through the link (devices already admitted stay until their grant is revoked) */
     async unshare() { if (!share || guest || !share.inviteEntry) return false; A.revoke(h, root, share.inviteEntry, 'share link revoked'); share.inviteEntry = null; await store.putSecret('share', te.encode(JSON.stringify(share))); signNow(); await syncOnce(); return true; },
     /** the object name a file is stored under on routes (a keyed hash: opaque to the server, unique per space) */
