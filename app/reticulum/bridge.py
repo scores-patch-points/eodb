@@ -182,6 +182,27 @@ def connect(args, identity):
         threading.Thread(target=handle, args=(c,), daemon=True).start()
 
 
+def start_reticulum(args):
+    """Start or attach. With no --rns-config this is the user's own ~/.reticulum: if rnsd, Sideband or MeshChat is already running there as the
+    shared instance, we attach to it and use every interface it has (Wi-Fi discovery, TCP hubs, an RNode radio) with no setup of our own."""
+    try:
+        # Reticulum logs to stdout by default; our stdout is the one machine-read line (an address or JSON), so its logs go to stderr
+        r = RNS.Reticulum(args.rns_config, loglevel=args.loglevel, logdest=lambda line: print(line, file=sys.stderr, flush=True),
+                          require_shared_instance=args.require_shared)
+    except (SystemExit, Exception) as e:
+        if args.require_shared:
+            log("instance: refused (no shared Reticulum instance is running; start rnsd, Sideband or MeshChat first)")
+            sys.exit(3)
+        raise
+    mode = "attached" if r.is_connected_to_shared_instance else "shared-host" if r.is_shared_instance else "standalone"
+    log("instance:", mode)
+    # backup only: the Reticulum release tested here (1.6.1) raises before this point when it cannot attach, and the handler above exits 3;
+    # a mutant that disables this line survives the tests, so this line is untested (it guards a future release that does not raise)
+    if args.require_shared and mode != "attached":
+        log("instance: refused (--require-shared, but this process became", mode + ")"); sys.exit(3)
+    return r, mode
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = p.add_subparsers(dest="mode", required=True)
@@ -190,6 +211,8 @@ def main():
         s.add_argument("--rns-config", help="Reticulum config dir (default: the usual ~/.reticulum)")
         s.add_argument("--identity", help="identity file (created if missing); default: a fresh one each run")
         s.add_argument("--loglevel", type=int, default=RNS.LOG_WARNING)
+        s.add_argument("--require-shared", action="store_true",
+                       help="attach to an already-running Reticulum shared instance (rnsd, Sideband, MeshChat) and refuse to start without one")
     a = sub.choices["serve"]
     a.add_argument("--target", default="127.0.0.1:7771", help="local directServer to pipe each Link into")
     a.add_argument("--allow", action="append", help="identity hash (hex) allowed to link; repeat. Default: anyone (contents are sealed anyway)")
@@ -200,7 +223,7 @@ def main():
     c.add_argument("--timeout", type=float, default=30.0)
     c.add_argument("--identify", action="store_true", help="identify to the serving side (needed when it has --allow)")
     args = p.parse_args()
-    RNS.Reticulum(args.rns_config, loglevel=args.loglevel)
+    start_reticulum(args)
     ident = load_identity(args.identity)
     if args.mode == "serve":
         serve(args, ident)

@@ -6,10 +6,10 @@ import { directCarrier } from './direct.mjs';
 import { chunkedCarrier } from './net.mjs';
 
 function channelOverSocket(socket) {
-  let buf = Buffer.alloc(0), onMsg = null, onEnd = null, ended = false;
+  let buf = Buffer.alloc(0), onMsg = null, ended = false; const onEnd = [];
   // a reset or a dead peer must not crash the process (an unhandled 'error' on a socket does): it ends the channel, and the carrier fails its pending calls
   socket.on('error', () => {});
-  socket.on('close', () => { ended = true; if (onEnd) onEnd(); });
+  socket.on('close', () => { ended = true; for (const f of onEnd.splice(0)) f(); });
   socket.on('data', (chunk) => {
     buf = Buffer.concat([buf, chunk]);
     for (;;) {
@@ -24,7 +24,7 @@ function channelOverSocket(socket) {
   return {
     send(text) { const b = Buffer.from(text, 'utf8'); const h = Buffer.alloc(4); h.writeUInt32BE(b.length, 0); socket.write(Buffer.concat([h, b])); },
     onMessage(cb) { onMsg = cb; },
-    onClose(cb) { onEnd = cb; if (ended) cb(); },
+    onClose(cb) { if (ended) cb(); else onEnd.push(cb); },
     close() { socket.destroy(); },
   };
 }
@@ -88,15 +88,49 @@ async function dialReticulum(uri) {
   const [dest, q] = uri.slice('reticulum:'.length).split('?');
   if (!/^[0-9a-f]{32}$/.test(dest)) throw new Error('reticulum route needs a 32-hex destination hash: reticulum:<hash>[?bridge=host:port]');   // regex-ok: a hash, not language
   const bridge = new URLSearchParams(q || '').get('bridge') || process.env.EODB_RNS_BRIDGE || '127.0.0.1:7770';
+  return directCarrier(await dialBridge(bridge, { t: 'dial', dest }, 'reticulum', `python3 app/reticulum/bridge.py connect --listen ${bridge}`));
+}
+
+/** connect to a local bridge, send one opening frame, and wait for {t:'up'}; afterwards the socket is an ordinary direct channel. */
+async function dialBridge(bridge, hello, label, howToStart) {
   const [host, port] = bridge.split(':');
   let ch;
   try { ch = await tcpChannel(host, Number(port)); }
-  catch (e) { throw new Error(`reticulum: no bridge at ${bridge}. Start one: python3 app/reticulum/bridge.py connect --listen ${bridge} (pip install rns). ${e.message}`); }
+  catch (e) { throw new Error(`${label}: no bridge at ${bridge}. Start one: ${howToStart} (pip install rns${label === 'lxmf' ? ' lxmf' : ''}). ${e.message}`); }
   const reply = await new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error('reticulum: the bridge did not answer the dial')), 45000);
+    const t = setTimeout(() => reject(new Error(`${label}: the bridge did not answer`)), 45000);
     ch.onMessage((text) => { clearTimeout(t); try { resolve(JSON.parse(text)); } catch (e) { reject(e); } });
-    ch.send(JSON.stringify({ t: 'dial', dest }));
+    ch.send(JSON.stringify(hello));
   }).catch((e) => { ch.close(); throw e; });
-  if (reply.t !== 'up') { ch.close(); throw new Error(`reticulum: ${reply.m || 'dial refused'}`); }
-  return directCarrier(ch);
+  if (reply.t !== 'up') { ch.close(); throw new Error(`${label}: ${reply.m || 'refused'}`); }
+  ch.address = reply.address;
+  return ch;
 }
+
+const lxmfLinks = new Map();
+/** an `lxmf:` route adapter (Node): `lxmf:<32-hex LXMF address of a member>?tag=<32 hex>[&bridge=host:port][&mtu=bytes]`.
+ *  Store-and-forward: a put goes to the local daemon (app/reticulum/lxmf_bridge.py), which keeps it and delivers it to every member it knows,
+ *  through an LXMF propagation node when the member is offline; list/get read what has ARRIVED here. So a read can lag a write by however long
+ *  delivery takes, and an object shows only once all its parts are in (chunkedCarrier). The tag is a secret carried by the share link: it is
+ *  how members recognise each other, so the route is only ever taken from a link, never from the log (route-policy.mjs). */
+export function lxmfAdapter(uri) {
+  if (!lxmfLinks.has(uri)) {
+    const [addr, q] = uri.slice('lxmf:'.length).split('?'); const p = new URLSearchParams(q || '');
+    const tag = p.get('tag') || '';
+    const bad = !/^[0-9a-f]{32}$/.test(addr) ? 'an LXMF address (32 hex)' : !/^[0-9a-f]{32}$/.test(tag) ? 'a tag=<32 hex> from the share link' : null;   // regex-ok: hashes, not language
+    if (bad) return Promise.reject(new Error(`lxmf route needs ${bad}: lxmf:<address>?tag=<32 hex>`));
+    const bridge = p.get('bridge') || process.env.EODB_LXMF_BRIDGE || '127.0.0.1:7772';
+    const mtu = Math.max(1024, Number(p.get('mtu')) || 128 * 1024);   // LXMF propagation carries up to 256 KB per message by default
+    const pr = dialBridge(bridge, { t: 'hello', tag, peers: [addr] }, 'lxmf', `python3 app/reticulum/lxmf_bridge.py --storage <dir> --listen ${bridge}`)
+      .then((ch) => { const c = directCarrier(ch); ch.onClose(() => { if (lxmfLinks.get(uri) === pr) lxmfLinks.delete(uri); }); return chunkedCarrier(c, { mtu }); });
+    lxmfLinks.set(uri, pr); pr.catch(() => lxmfLinks.delete(uri));
+  }
+  return lxmfLinks.get(uri);
+}
+
+/** an lxmf adapter that always uses THIS node's local daemon, whatever bridge a shared route names (a route from someone else's link must not
+ *  pick which local port we talk to). headless.mjs uses it with --lxmf-bridge. */
+export const lxmfAdapterVia = (bridge) => (uri) => { const [a, q] = String(uri).split('?'); const p = new URLSearchParams(q || ''); p.set('bridge', bridge); return lxmfAdapter(`${a}?${p}`); };
+
+/** a fresh tag for an lxmf: route (put it in the route you share; it is as secret as the share link). */
+export const newLxmfTag = () => [...globalThis.crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join('');

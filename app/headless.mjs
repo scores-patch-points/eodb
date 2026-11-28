@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openSpace } from './engine.mjs';
 import { fsBackend } from './fs-backend.mjs';
-import { directAdapter, reticulumAdapter } from './tcp.mjs';
+import { directAdapter, reticulumAdapter, lxmfAdapterVia } from './tcp.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const cells = JSON.parse(fs.readFileSync(path.join(here, 'vendor', 'pharos', 'cells.json'), 'utf8'));
@@ -34,7 +34,8 @@ const space = await openSpace({
   cells, names, passphrase,
   join: flags.join || undefined,
   autosync: true, syncMs: Number(flags.syncMs || 5000),
-  adapters: { direct: directAdapter, reticulum: reticulumAdapter },   // Node-only routes: direct:tcp://host:port, reticulum:<destination hash>
+  // Node-only routes: direct:tcp://host:port, reticulum:<destination hash>, lxmf:<address>?tag=<hex> (through THIS node's own LXMF daemon)
+  adapters: { direct: directAdapter, reticulum: reticulumAdapter, lxmf: lxmfAdapterVia(String(flags['lxmf-bridge'] || process.env.EODB_LXMF_BRIDGE || '127.0.0.1:7772')) },
 });
 
 if (space.role !== 'guest' && routes.length) {
@@ -48,6 +49,13 @@ if (space.role !== 'guest' && routes.length) {
 if (flags.note) { space.append('ws+', { id: `w:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 6)}`, name: String(flags.note) }); await space.settle(); await space.syncOnce(); }
 
 space.onStatus(() => { const s = space.report().share; if (s) process.stdout.write(JSON.stringify({ routes: s.routes, routesUp: s.routesUp, last: s.last, error: s.error, quarantined: s.quarantined }) + '\n'); });
+
+// remote control from Sideband or any LXMF client: --lxmf-bot --bot-allow <lxmf address>[,<address>...]  (silent to everyone not on the list)
+if (flags['lxmf-bot']) {
+  const { startLxmfBot } = await import('./lxmf-bot.mjs');
+  const bot = await startLxmfBot(space, { bridge: String(flags['lxmf-bridge'] || process.env.EODB_LXMF_BRIDGE || '127.0.0.1:7772'), allow: String(flags['bot-allow'] || '').split(',') });
+  process.stdout.write(JSON.stringify({ lxmfBot: bot.address }) + '\n');
+}
 
 // stigmergic worker: no one schedules anything. On each pass the node syncs with its peers, claims any due poll/schedule
 // trigger or unhandled webhook event, runs the automation, and publishes the run (and every node result) back as entries.

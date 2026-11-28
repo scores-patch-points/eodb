@@ -12,11 +12,12 @@ Status: **tested** means a test in this repo exercises it; **kit** means written
 |---|---|---|---|---|---|
 | [Web app (any browser)](#web-app) | browser | surface | relay, http, mailbox, lora | - | tested |
 | [Browser extension](#extension) | browser | surface | - | - | tested |
-| [Headless node (always on, no screen)](#headless-node) | node | peer | relay, http, mailbox, lora, direct, reticulum | - | tested |
+| [Headless node (always on, no screen)](#headless-node) | node | peer | relay, http, mailbox, lora, direct, reticulum, lxmf | - | tested |
 | [Projection server (tables, SQL, export, webhooks)](#projection-server) | node | peer | relay, http, mailbox, lora | - | tested |
 | [Blind relay](#relay) | node | carrier | - | relay, http, lora | tested |
 | [Mailbox server](#mailbox) | node | carrier | - | mailbox | kit |
 | [Reticulum bridge (mesh, radio)](#reticulum-bridge) | node+python | carrier | reticulum | reticulum | tested |
+| [LXMF daemon (store-and-forward sync, phone remote control)](#lxmf-daemon) | node+python | carrier | lxmf | lxmf | tested |
 | [Coding agent (OpenCode) through the app](#coding-agent) | node | tool | - | - | tested |
 | [Email bridge (IMAP/SMTP)](#email-bridge) | node | tool | - | - | tested |
 | [Node-RED flows](#node-red-flows) | browser | tool | - | - | tested |
@@ -70,7 +71,7 @@ A space on disk, sealed under a passphrase, syncing for as long as it runs. With
 
 - **Needs:** Node 18+; a directory and a passphrase
 - **Joins a shared space:** yes (--join)
-- **Writes:** automation runs, node results and landed rows (with --worker); --note writes one marker entry
+- **Writes:** automation runs, node results and landed rows (with --worker); --note writes one marker entry; notes from allow-listed LXMF senders (with --lxmf-bot)
 - **Files:** `app/headless.mjs`, `app/fs-backend.mjs`, `app/peek.mjs`; **tests:** `app/test/headless.test.mjs`, `app/test/worker.test.mjs`
 - **Limits:** a space it founds is named "eodb" unless --name is given (a joined space takes the link's name)
 
@@ -167,6 +168,28 @@ node app/reticulum/serve.mjs --rns-config ~/.reticulum      # the side that hold
 python3 app/reticulum/bridge.py connect --listen 127.0.0.1:7770   # every joining machine, then a headless node
 ```
 
+## LXMF daemon (store-and-forward sync, phone remote control)
+<a id="lxmf-daemon"></a>
+
+One per node: its own LXMF address, a sealed object store per space, delivery to every member (through an LXMF propagation node when one is offline), and an inbox that a headless node with --lxmf-bot answers for allow-listed Sideband users.
+
+- **Needs:** Python with pip install rns lxmf; a Reticulum path to the other members or to a shared LXMF propagation node
+- **Joins a shared space:** through a headless node (a join retries until the backfill arrives)
+- **Writes:** nothing itself: it stores and forwards sealed objects; the headless node writes the notes
+- **Files:** `app/reticulum/lxmf_bridge.py`, `app/reticulum/lxmf_send.py`, `app/lxmf-bot.mjs`, `app/reticulum/README.md`; **tests:** `app/test/lxmf.test.mjs`
+- **Limits:** browsers cannot use it; tested on one machine with real processes, never with Sideband itself or over radio; LXMF proof-of-work stamps use every CPU core while they run
+
+Install:
+```
+pip install rns lxmf
+```
+Run:
+```
+python3 app/reticulum/lxmf_bridge.py --storage ~/.eodb/lxmf [--propagation-node <hash>]   # prints its LXMF address
+node app/headless.mjs ... --lxmf-bridge 127.0.0.1:7772 [--lxmf-bot --bot-allow <your LXMF address>]
+python3 app/reticulum/lxmf_send.py --identity ~/.eodb/me --to <node address> --text status   # or use Sideband
+```
+
 ## Coding agent (OpenCode) through the app
 <a id="coding-agent"></a>
 
@@ -239,6 +262,7 @@ A route is how two apps reach each other. Each is the same three calls on sealed
 | `lora` | an HTTP relay behind a LoRa-class gateway: small frames, paced to a duty cycle | browser, node | lora:https://gateway?mtu=200&duty=0.01 | tested |
 | `direct` | peer to peer over TCP, no relay | node | direct:tcp://host:port | tested |
 | `reticulum` | Reticulum (LoRa, Wi-Fi, TCP, I2P mesh) through a local Python bridge | node+python | reticulum:<32-hex destination hash> | tested |
+| `lxmf` | LXMF store-and-forward over Reticulum (members need not be online together) through a local Python daemon | node+python | lxmf:<32-hex LXMF address of a member>?tag=<32 hex>  (share link only, never announced in the log) | tested |
 | `webrtc` | browser to browser, no relay (webrtcChannel in app/direct.mjs) | browser | none yet: the channel exists, but no route scheme or signaler is wired into the engine | gap |
 
 ## Why they are commensurable
@@ -247,7 +271,7 @@ A route is how two apps reach each other. Each is the same three calls on sealed
 - **One vocabulary of writes.** Every surface writes the same 27 ops, each a pharos kind: ws+ (ws), tb+ (tb), fld+ (fld), fld= (fld-set), row+ (row), rows+ (rows), cell= (cell-set), file+ (file), doc+ (doc), doc= (doc-set), cmt+ (cmt), cmt= (cmt-set), share+ (share), blk+ (blk), blk= (blk-set), voice+ (voice), read (read), map (map), retract (retract), auto+ (auto), auto-run+ (auto-run), auto-node+ (auto-node), auto-trigger+ (auto-trigger), auto-event+ (auto-event), auto-claim+ (auto-claim), project+ (project), vfile+ (vfile). (`app/engine.mjs OPS`)
 - **One identity.** An account key grants each device a capability; every entry is signed by its device and counts only if a grant chain reaches the account. A guest device is granted through the invite in the link. (`app/engine.mjs, app/vendor/pharos/access.mjs`)
 - **One seal.** Everything leaves a device AES-256-GCM sealed under the space key, bound to its object name. Relays, mailboxes and bridges carry ciphertext and never hold the key. (`app/net.mjs sealedCarrier`)
-- **One carrier contract.** Every route is the same three calls (list, get, create-only putNew), so a device writes to all its routes at once and repairs one that fell behind. Schemes: relay, http, mailbox, lora, direct, reticulum. (`app/net.mjs, app/direct.mjs, app/tcp.mjs`)
+- **One carrier contract.** Every route is the same three calls (list, get, create-only putNew), so a device writes to all its routes at once and repairs one that fell behind. Schemes: relay, http, mailbox, lora, direct, reticulum, lxmf. (`app/net.mjs, app/direct.mjs, app/tcp.mjs`)
 - **One link.** eodb-join:1:<...> carries the space name, routes, space key, account key and invite. Any app that can open a space can join from it, whatever it calls the space locally. (`app/engine.mjs share, parseJoin`)
 - **One fold.** The log folds to named tables answerable by SQL, and projects to any of 7 formats (csv, json, jsonl, sqlite, postgres, mysql, markdown); each projection is itself recorded as an entry. (`app/relational.mjs, app/project.mjs`)
 - **One automation shape.** An automation is data: 10 node types and 13 ready connectors. Any peer can run it; the claim, the run and every node result are entries, so who did what is in the log. (`app/automation.mjs, app/worker.mjs`)
